@@ -1,0 +1,16 @@
+[package]
+name = "schism"
+version = "0.1.0"
+edition = "2021"
+authors = ["Mark C. Chu-Carroll <markcc@gmail.com>"]
+
+
+[build-dependencies]
+lalrpop = "0.20.0"
+
+[dependencies]
+lalrpop-util = "0.20.0"
+regex = "1"
+unicode_categories = "0.1.1"
+queues = "1.0.2"
+line-col = "0.2.1"
