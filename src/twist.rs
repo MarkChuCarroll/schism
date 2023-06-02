@@ -23,11 +23,15 @@ impl Twist {
         return Self::AttrNode(name.to_string(), value);
     }
 
-    pub fn val(name: &str, value: Option<Twist>) -> Self {
+    pub fn opt_val(name: &str, value: Option<Twist>) -> Self {
         return match value {
             Some(v) => Self::ValueNode(name.to_string(), Some(Box::new(v.twist()))),
             None => Self::ValueNode(name.to_string(), None),
         };
+    }
+
+    pub fn val(name: &str, value: Twist) -> Self {
+        return Self::ValueNode(name.to_string(), Some(Box::new(value)));
     }
 
     fn indent(s: &mut String, i: usize) {
@@ -58,9 +62,9 @@ impl Twist {
                 Self::indent(rendered, indent);
                 rendered.push_str("attr ");
                 rendered.push_str(name);
-                rendered.push_str("=");
+                rendered.push_str("='");
                 rendered.push_str(value);
-                rendered.push_str("\n");
+                rendered.push_str("'\n");
             }
             Self::ValueNode(name, value) => match value {
                 Some(v) => {
@@ -69,6 +73,69 @@ impl Twist {
                     rendered.push_str(name);
                     rendered.push_str(":\n");
                     v.render(rendered, indent + 1)
+                }
+                None => (),
+            },
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        let mut s = String::new();
+        self.render(&mut s, 1);
+        return s;
+    }
+
+    pub fn code(&self, rendered: &mut String) {
+        match self {
+            Self::ObjNode(name, children) => {
+                rendered.push_str("Twist::obj(\"");
+                rendered.push_str(name);
+                rendered.push_str("\", vec![");
+                rendered.push_str(
+                    &children
+                        .iter()
+                        .map(|c| {
+                            let mut cstr = String::new();
+                            c.code(&mut cstr);
+                            cstr
+                        })
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                );
+                rendered.push_str("])");
+            }
+            Self::ArrayNode(name, children) => {
+                rendered.push_str("Twist::arr(\"");
+                rendered.push_str(name);
+                rendered.push_str("\", vec![");
+                rendered.push_str(
+                    &children
+                        .iter()
+                        .map(|c| {
+                            let mut cstr = String::new();
+                            c.code(&mut cstr);
+                            cstr
+                        })
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                );
+
+                rendered.push_str("])");
+            }
+            Self::AttrNode(name, value) => {
+                rendered.push_str("Twist::attr(\"");
+                rendered.push_str(name);
+                rendered.push_str("\", \"");
+                rendered.push_str(value);
+                rendered.push_str("\".to_string())")
+            }
+            Self::ValueNode(name, value) => match value {
+                Some(v) => {
+                    rendered.push_str("Twist::val(\"");
+                    rendered.push_str(name);
+                    rendered.push_str("\", ");
+                    v.code(rendered);
+                    rendered.push_str(")");
                 }
                 None => (),
             },

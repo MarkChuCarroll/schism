@@ -1,16 +1,31 @@
-use crate::twist::{Twist, Twistable};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Symbol(pub String);
+
+pub trait Renderable {
+    fn render_into(&self, target: &mut String, indent: usize);
+
+    fn to_string(&self) -> String {
+        let mut s = String::new();
+        self.render_into(&mut s, 1);
+        return s;
+    }
+
+    fn indent(&self, target: &mut String, ind: usize) {
+        target.push_str(&"   ".repeat(ind))
+    }
+}
 
 impl Symbol {
     fn to_string(&self) -> String {
         match self {
-            Symbol(s) => *s,
+            Symbol(s) => s.to_string(),
         }
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Identifier {
     Qualified(Vec<Symbol>),
     Simple(Symbol),
@@ -31,94 +46,91 @@ impl Identifier {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Sect {
     pub uses: Vec<UseDecl>,
     pub decls: Vec<Decl>,
 }
 
-impl Twistable for Sect {
-    fn twist(&self) -> Twist {
-        Twist::obj(
-            "sect",
-            vec![
-                Twist::arr(
-                    "uses",
-                    self.uses.iter().map(|u| u.twist()).collect::<Vec<Twist>>(),
-                ),
-                Twist::arr(
-                    "uses",
-                    self.decls.iter().map(|s| s.twist()).collect::<Vec<Twist>>(),
-                ),
-            ],
-        )
+impl Renderable for Sect {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("sect\n");
+        for u in &self.uses {
+            u.render_into(target, indent + 1);
+        }
+        for d in &self.decls {
+            d.render_into(target, indent + 1)
+        }
+        self.indent(target, indent);
+        target.push_str("end\n");
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UseDecl {
     pub sect: Identifier,
     pub names: Option<Vec<Symbol>>,
 }
 
-impl Twistable for UseDecl {
-    fn twist(&self) -> Twist {
-        match self.names {
-            Some(names) => Twist::obj(
-                "decl::use",
-                vec![
-                    Twist::attr("sect", self.sect.to_string()),
-                    Twist::arr(
-                        "names",
-                        names
-                            .iter()
-                            .map(|n| Twist::attr("name", n.to_string()))
-                            .collect::<Vec<Twist>>(),
-                    ),
-                ],
-            ),
-            None => Twist::obj(
-                "decl::use",
-                vec![Twist::attr("sect", self.sect.to_string())],
-            ),
+impl Renderable for UseDecl {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("use ");
+        target.push_str(&self.sect.to_string());
+        match &self.names {
+            Some(vs) => {
+                target.push_str("{");
+                target.push_str(
+                    &vs.iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                );
+                target.push_str("}\n");
+            }
+            None => target.push_str("\n"),
         }
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Decl {
     Struct(StructDecl),
     Function(FunctionDecl),
     Var(VarDecl),
 }
 
-impl Twistable for Decl {
-    fn twist(&self) -> Twist {
+impl Renderable for Decl {
+    fn render_into(&self, target: &mut String, indent: usize) {
         match self {
-            Self::Struct(s) => s.twist(),
-            Self::Function(f) => f.twist(),
-            Self::Var(v) => v.twist(),
+            Self::Struct(s) => s.render_into(target, indent),
+            Self::Function(f) => f.render_into(target, indent),
+            Self::Var(v) => v.render_into(target, indent),
         }
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypeParam {
     pub name: Symbol,
     pub constraint: Option<SType>,
 }
 
-impl Twistable for TypeParam {
-    fn twist(&self) -> Twist {
-        match self.constraint {
-            Some(c) => Twist::obj(
-                "TypeParam",
-                vec![
-                    Twist::attr("name", self.name.to_string()),
-                    Twist::val("constraint", c.twist()),
-                ],
-            ),
-            None => Twist::attr("TypeParam", self.name),
+impl Renderable for TypeParam {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        target.push_str(&self.name.to_string());
+        match &self.constraint {
+            Some(st) => {
+                target.push_str("<<");
+                st.render_into(target, indent);
+            }
+            None => (),
         }
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct StructDecl {
     pub name: Symbol,
     pub supers: Option<Vec<SType>>,
@@ -127,69 +139,92 @@ pub struct StructDecl {
     pub methods: Vec<MethodDecl>,
 }
 
-fn twist_vec<T: Twistable>(vs: Vec<T>) -> Vec<Twist> {
-    vs.iter().map(|v| v.twist()).collect::<Vec<Twist>>()
-}
+impl Renderable for StructDecl {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("struct ");
+        match &self.type_params {
+            Some(tps) => {
+                target.push_str("[");
+                target.push_str(
+                    &tps.iter()
+                        .map(|tp| tp.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                );
+                target.push_str("]");
+            }
+            None => (),
+        }
+        target.push_str(&self.name.to_string());
 
-impl Twistable for StructDecl {
-    fn twist(&self) -> Twist {
-        let mut children: Vec<Twist> = Vec::new();
-        children.push(Twist::attr("name", self.name.to_string()));
-        match self.supers {
-            Some(sups) => children.push(Twist::arr("supers", twist_vec(sups))),
+        target.push_str("\n");
+        match &self.supers {
+            Some(ss) => {
+                self.indent(target, indent + 1);
+                target.push_str("supers ");
+                target.push_str(
+                    &ss.iter()
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                );
+                target.push_str("\n");
+            }
             None => (),
         }
-        match self.type_params {
-            Some(tps) => children.push(Twist::arr("type_params", twist_vec(tps))),
-            None => (),
+        for f in &self.fields {
+            self.indent(target, indent + 1);
+            target.push_str("slot ");
+            target.push_str(&f.name.to_string());
+            target.push_str(": ");
+            target.push_str(&f.s_type.to_string());
+            target.push_str("\n")
         }
-        children.push(Twist::arr("fields", twist_vec(self.fields)));
-        children.push(Twist::arr("methods", twist_vec(self.methods)));
-        return Twist::obj("decl::struct", children);
+        for m in &self.methods {
+            m.render_into(target, indent + 1)
+        }
+        self.indent(target, indent);
+        target.push_str("end\n")
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum StructMemberDecl {
     Field(TypedIdentifier),
     Method(MethodDecl),
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct MethodDecl {
     pub name: Symbol,
     pub effect: StackEffect,
     pub body: Vec<Expr>,
 }
 
-impl Twistable for MethodDecl {
-    fn twist(&self) -> Twist {
-        Twist::obj(
-            "decl::method",
-            vec![
-                Twist::attr("name", self.name.to_string()),
-                Twist::val("effect", self.effect.twist()),
-                Twist::arr("body", twist_vec(self.body)),
-            ],
-        )
+impl Renderable for MethodDecl {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("meth ");
+        target.push_str(&self.name.to_string());
+        target.push_str(" ");
+        target.push_str(&self.effect.to_string());
+        target.push_str(" do\n");
+        for b in &self.body {
+            b.render_into(target, indent + 1)
+        }
+        self.indent(target, indent);
+        target.push_str("end\n")
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypedIdentifier {
     pub name: Symbol,
     pub s_type: SType,
 }
 
-impl Twistable for TypedIdentifier {
-    fn twist(&self) -> Twist {
-        Twist::obj(
-            "TypedId",
-            vec![
-                Twist::attr("name", self.name.to_string()),
-                Twist::val("type", self.s_type.twist()),
-            ],
-        )
-    }
-}
-
+#[derive(Debug, PartialEq, Clone)]
 pub struct FunctionDecl {
     pub name: Symbol,
     pub type_params: Option<Vec<TypeParam>>,
@@ -197,39 +232,58 @@ pub struct FunctionDecl {
     pub body: Vec<Expr>,
 }
 
-impl Twistable for FunctionDecl {
-    fn twist(&self) -> Twist {
-        let mut children: Vec<Twist> = Vec::new();
-        children.push(Twist::attr("name", self.name.to_string()));
-        match self.type_params {
-            Some(tps) => children.push(Twist::arr("TypeParams", twist_vec(tps))),
+impl Renderable for FunctionDecl {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("fun ");
+        match &self.type_params {
+            Some(tps) => {
+                target.push_str("[");
+                target.push_str(
+                    &tps.iter()
+                        .map(|tp| tp.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                );
+                target.push_str("]");
+            }
             None => (),
         }
-        children.push(Twist::val("effect", self.signature.twist()));
-        children.push(Twist::arr("body", twist_vec(self.body)));
-        return Twist::obj("decl::function", children);
+        target.push_str(&self.name.to_string());
+        target.push_str(&self.signature.to_string());
+        target.push_str(" is\n");
+        for b in &self.body {
+            b.render_into(target, indent + 1);
+        }
+        self.indent(target, indent);
+        target.push_str("end\n")
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct VarDecl {
     pub name: Symbol,
     pub s_type: SType,
     pub init_value: Vec<Expr>,
 }
 
-impl Twistable for VarDecl {
-    fn twist(&self) -> Twist {
-        Twist::obj(
-            "decl::var",
-            vec![
-                Twist::attr("name", self.name.to_string()),
-                Twist::val("type", self.s_type.twist()),
-                Twist::arr("init_value", twist_vec(self.init_value)),
-            ],
-        )
+impl Renderable for VarDecl {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("var ");
+        target.push_str(&self.name.to_string());
+        target.push_str(": ");
+        target.push_str(&self.s_type.to_string());
+        target.push_str("{\n");
+        for e in &self.init_value {
+            e.render_into(target, indent + 1)
+        }
+        self.indent(target, indent);
+        target.push_str("}\n")
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     FunCall(FunCallExpr),
     List(ListExpr),
@@ -238,30 +292,51 @@ pub enum Expr {
     Loop(LoopExpr),
     MethodCall(MethodCallExpr),
     Block(BlockExpr),
-    IntLit(String),
-    FloatLit(String),
+    IntLit(i64),
+    FloatLit(f64),
     StringLit(String),
-    CharLit(String),
+    CharLit(char),
+    Local(LocalExpr),
 }
 
-impl Twistable for Expr {
-    fn twist(&self) -> Twist {
+impl Renderable for Expr {
+    fn render_into(&self, target: &mut String, indent: usize) {
         match self {
-            Self::FunCall(f) => f.twist(),
-            Self::List(l) => l.twist(),
-            Self::Map(m) => m.twist(),
-            Self::Cond(c) => c.twist(),
-            Self::Loop(l) => l.twist(),
-            Self::MethodCall(m) => m.twist(),
-            Self::Block(b) => b.twist(),
-            Self::IntLit(i) => Twist::attr("IntLit", i.to_string()),
-            Self::FloatLit(f) => Twist::attr("FloatLit", f.to_string()),
-            Self::StringLit(s) => Twist::attr("StringLit", s.to_string()),
-            Self::CharLit(c) => Twist::attr("CharLit", c.to_string()),
+            Self::FunCall(f) => f.render_into(target, indent),
+            Self::List(l) => l.render_into(target, indent),
+            Self::Map(m) => m.render_into(target, indent),
+            Self::Cond(c) => c.render_into(target, indent),
+            Self::Loop(l) => l.render_into(target, indent),
+            Self::MethodCall(m) => m.render_into(target, indent),
+            Self::Block(b) => b.render_into(target, indent),
+            Self::IntLit(i) => {
+                self.indent(target, indent);
+                target.push_str(&i.to_string());
+                target.push_str("\n")
+            }
+            Self::FloatLit(f) => {
+                self.indent(target, indent);
+                target.push_str(&f.to_string());
+                target.push_str("\n")
+            }
+            Self::StringLit(s) => {
+                self.indent(target, indent);
+                target.push('"');
+                target.push_str(s);
+                target.push_str("\"\n")
+            }
+            Self::CharLit(c) => {
+                self.indent(target, indent);
+                target.push_str("'");
+                target.push(*c);
+                target.push_str("'\n");
+            }
+            Self::Local(l) => l.render_into(target, indent),
         }
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SType {
     Simple(Identifier),
     Parametric(Vec<SType>, Identifier),
@@ -269,53 +344,61 @@ pub enum SType {
     TypeVar(Symbol),
 }
 
-impl Twistable for SType {
-    fn twist(&self) -> Twist {
+impl Renderable for SType {
+    fn render_into(&self, target: &mut String, indent: usize) {
         match self {
-            Self::Simple(id) => Twist::attr("type::simple", id.to_string()),
-            Self::Parametric(params, name) => Twist::obj(
-                "type::param",
-                vec![
-                    Twist::attr("id", name.to_string()),
-                    Twist::arr("type_params", twist_vec(*params)),
-                ],
-            ),
-            Self::Function(eff) => Twist::val("type::func", eff.twist()),
-            Self::TypeVar(s) => Twist::attr("type:var", s.to_string()),
+            Self::Simple(id) => target.push_str(&id.to_string()),
+            Self::Parametric(params, id) => {
+                target.push_str("[");
+                target.push_str(
+                    &params
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                );
+                target.push_str("]");
+                target.push_str(&id.to_string())
+            }
+            Self::Function(f) => f.render_into(target, indent),
+            Self::TypeVar(t) => target.push_str(&t.to_string()),
         }
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct StackEffect {
     pub before: StackImage,
     pub after: StackImage,
 }
 
-impl Twistable for StackEffect {
-    fn twist(&self) -> Twist {
-        Twist::obj(
-            "StackEffect",
-            vec![
-                Twist::val("before", self.before.twist()),
-                Twist::val("after", self.after.twist()),
-            ],
-        )
+impl Renderable for StackEffect {
+    fn render_into(&self, target: &mut String, _: usize) {
+        target.push_str("(");
+        target.push_str(&self.before.to_string());
+        target.push_str(" -- ");
+        target.push_str(&self.after.to_string());
+        target.push_str(")");
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct StackImage {
     pub stack_var: Symbol,
     pub stack: Vec<SType>,
 }
 
-impl Twistable for StackImage {
-    fn twist(&self) -> Twist {
-        Twist::obj(
-            "StackImage",
-            vec![
-                Twist::attr("stackvar", self.stack_var.to_string()),
-                Twist::arr("stack", twist_vec(self.stack)),
-            ],
+impl Renderable for StackImage {
+    fn render_into(&self, target: &mut String, _: usize) {
+        target.push_str(&self.stack_var.to_string());
+        target.push_str(" ");
+        target.push_str(
+            &self
+                .stack
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+                .join(" "),
         )
     }
 }
@@ -323,33 +406,193 @@ impl Twistable for StackImage {
 static IMG_VARIABLE_INDEX: AtomicUsize = AtomicUsize::new(0);
 
 impl StackImage {
-    pub fn unique_image_var() -> String {
+    pub fn unique_image_var() -> Symbol {
         let idx = IMG_VARIABLE_INDEX.fetch_add(1, Ordering::Relaxed);
-        return format!("__stack__{}__", idx);
+        return Symbol(format!("@_{}", idx));
+    }
+
+    pub fn reset_index() {
+        IMG_VARIABLE_INDEX.store(0, Ordering::Relaxed)
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 // A function call is just the name of the function.
-pub struct FunCallExpr(pub Identifier);
+pub struct FunCallExpr {
+    pub id: Identifier,
+    pub type_args: Option<Vec<SType>>,
+}
 
+impl Renderable for FunCallExpr {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        match &self.type_args {
+            Some(tas) => {
+                target.push_str("[");
+                target.push_str(
+                    &tas.iter()
+                        .map(|ta| ta.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                );
+                target.push_str("]")
+            }
+            None => (),
+        }
+        target.push_str(&self.id.to_string());
+        target.push_str("\n");
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct ListExpr {
     pub value_type: SType,
     pub values: Vec<Vec<Expr>>,
 }
 
+impl Renderable for ListExpr {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("list[");
+        target.push_str(&self.value_type.to_string());
+        target.push_str("](\n");
+        for vs in &self.values {
+            self.indent(target, indent + 1);
+            target.push_str("val {\n");
+            for v in vs {
+                v.render_into(target, indent + 2)
+            }
+            self.indent(target, indent + 1);
+            target.push_str("}\n")
+        }
+        self.indent(target, indent);
+        target.push_str(")\n")
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct MapExpr {
     pub key_type: SType,
     pub value_type: SType,
     pub values: Vec<(Vec<Expr>, Vec<Expr>)>,
 }
 
+impl Renderable for MapExpr {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("map[key: ");
+        target.push_str(&self.value_type.to_string());
+        target.push_str(", val: ");
+        target.push_str(&self.value_type.to_string());
+        target.push_str("](\n");
+        for pair in &self.values {
+            self.indent(target, indent + 1);
+            target.push_str("pair {\n");
+            self.indent(target, indent + 2);
+            target.push_str("key: {\n");
+            for v in &pair.0 {
+                v.render_into(target, indent + 3)
+            }
+            self.indent(target, indent + 2);
+            target.push_str("}, val: {\n");
+            for v in &pair.1 {
+                v.render_into(target, indent + 3)
+            }
+            self.indent(target, indent + 2);
+            target.push_str("}\n");
+            self.indent(target, indent + 1);
+            target.push_str("}\n")
+        }
+        self.indent(target, indent);
+        target.push_str(")\n")
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct CondExpr {
     pub true_block: Vec<Expr>,
     pub false_block: Vec<Expr>,
 }
 
-pub struct LoopExpr(pub Vec<Expr>);
+impl Renderable for CondExpr {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("if\n");
+        for t in &self.true_block {
+            t.render_into(target, indent + 1)
+        }
+        self.indent(target, indent);
+        target.push_str("else\n");
+        for f in &self.false_block {
+            f.render_into(target, indent + 1)
+        }
+        self.indent(target, indent);
+        target.push_str("end\n");
+    }
+}
 
-pub struct MethodCallExpr(pub Symbol);
+#[derive(Debug, PartialEq, Clone)]
+pub struct LoopExpr {
+    pub body: Vec<Expr>,
+}
 
-pub struct BlockExpr(pub StackEffect, pub Vec<Expr>);
+impl Renderable for LoopExpr {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("loop\n");
+        for b in &self.body {
+            b.render_into(target, indent + 1)
+        }
+        self.indent(target, indent);
+        target.push_str("end\n")
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct MethodCallExpr {
+    pub sym: Symbol,
+}
+
+impl Renderable for MethodCallExpr {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("<- ");
+        target.push_str(&self.sym.to_string());
+        target.push_str("\n");
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct BlockExpr {
+    pub effect: StackEffect,
+    pub body: Vec<Expr>,
+}
+
+impl Renderable for BlockExpr {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("[[\n");
+        self.indent(target, indent + 1);
+        target.push_str(&self.effect.to_string());
+        target.push_str("\n");
+        for b in &self.body {
+            b.render_into(target, indent + 1);
+        }
+        self.indent(target, indent);
+        target.push_str("]]\n")
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct LocalExpr {
+    pub name: Symbol,
+}
+
+impl Renderable for LocalExpr {
+    fn render_into(&self, target: &mut String, indent: usize) {
+        self.indent(target, indent);
+        target.push_str("local ");
+        target.push_str(&self.name.to_string());
+        target.push_str("\n")
+    }
+}

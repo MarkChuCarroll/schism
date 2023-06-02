@@ -3,15 +3,15 @@ use line_col::LineColLookup;
 use std::{collections::HashMap, str::CharIndices};
 use unicode_categories::UnicodeCategories;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Tok {
     SYMBOL(String),
-    STACKVAR(String), //  !alpha+
+    STACKVAR(String), //  @alpha+
     TYPEVAR(String),  //   'alpha+
-    INTLIT(String),
-    FLOATLIT(String),
+    INTLIT(i64),
+    FLOATLIT(f64),
     STRINGLIT(String),
-    CHARLIT(String),
+    CHARLIT(char),
     // Keywords
     USE,
     STRUCT,
@@ -61,11 +61,13 @@ trait CharacterCategories {
 impl CharacterCategories for char {
     fn is_id_start_char(&self) -> bool {
         return !self.is_syntax_char()
+            && !self.is_whitespace()
             && (self.is_alphabetic() || self.is_symbol() || self.is_punctuation());
     }
 
     fn is_id_char(&self) -> bool {
         return !self.is_syntax_char()
+            && !self.is_whitespace()
             && (self.is_alphabetic()
                 || self.is_punctuation()
                 || self.is_symbol()
@@ -74,7 +76,7 @@ impl CharacterCategories for char {
 
     fn is_syntax_char(&self) -> bool {
         match self {
-            '\'' | '"' | '#' | '!' | '[' | ']' | '{' | '}' | '(' | ')' | ':' | ',' => true,
+            '\'' | '"' | '#' | '@' | '[' | ']' | '{' | '}' | '(' | ')' | ':' | ',' => true,
             _ => false,
         }
     }
@@ -123,8 +125,7 @@ impl<'input> Scanner<'input> {
     }
 
     /// Convert a position within the input string to
-    /// a (line, column) pair. We use 1-based line numbers,
-    /// and 0-based column numbers for familiarity.
+    /// a (line, column) pair.
     ///
     /// Note that this assumes that the position was returned
     /// by the scanner as the location of a token. It will panic
@@ -251,7 +252,8 @@ impl<'input> Scanner<'input> {
                             Ok(_) => continue,
                             Err(e) => return Some(Err(e)),
                         },
-                        _ => return self.scan_id(idx),
+                        Some((_, c)) if c.is_id_char() => return self.scan_id(idx),
+                        _ => return Some(Ok((idx, Tok::SYMBOL("/".to_string()), idx + 1))),
                     }
                 }
 
@@ -265,12 +267,16 @@ impl<'input> Scanner<'input> {
                         _ => return Some(Ok((idx, Tok::COLON, idx + 1))),
                     }
                 }
-                Some((idx, '!')) => {
+                Some((idx, '@')) => {
                     self.advance();
                     match self.current {
                         Some((_, c)) if c.is_alphabetic() => {
                             self.advance();
-                            return Some(Ok((idx, Tok::STACKVAR(c.to_string()), idx + 2)));
+                            return Some(Ok((
+                                idx,
+                                Tok::STACKVAR("@".to_string() + &c.to_string()),
+                                idx + 2,
+                            )));
                         }
                         _ => {
                             let (line, column) = self.line_and_col(idx);
@@ -281,8 +287,6 @@ impl<'input> Scanner<'input> {
                             }));
                         }
                     }
-                    // Stack Variable
-                    // TODO
                 }
                 Some((idx, '\'')) => {
                     // char literal
@@ -327,6 +331,14 @@ impl<'input> Scanner<'input> {
                 }
                 Some((idx, '"')) => return self.scan_string(idx),
                 Some((idx, c)) => {
+                    if c == '-' {
+                        // If it's a minus, and the next character is a digit,
+                        // then send to number.
+                        match self.next {
+                            Some((_, c)) if c.is_number() => return self.scan_number(idx),
+                            _ => (),
+                        }
+                    }
                     if c.is_id_start_char() {
                         return self.scan_id(idx);
                     } else if c.is_number() || c == '-' {
@@ -427,14 +439,14 @@ impl<'input> Scanner<'input> {
                 } else {
                     return Some(Ok((
                         start,
-                        Tok::INTLIT(self.input[start..i].to_string()),
+                        Tok::INTLIT(self.input[start..i].parse::<i64>().unwrap()),
                         i,
                     )));
                 }
             } else {
                 return Some(Ok((
                     start,
-                    Tok::INTLIT(self.input[start..(start + count)].to_string()),
+                    Tok::INTLIT(self.input[start..(start + count)].parse::<i64>().unwrap()),
                     start + count,
                 )));
             }
@@ -456,7 +468,7 @@ impl<'input> Scanner<'input> {
                 } else {
                     return Some(Ok((
                         start,
-                        Tok::FLOATLIT(self.input[start..i].to_string()),
+                        Tok::FLOATLIT(self.input[start..i].parse::<f64>().unwrap()),
                         i,
                     )));
                 }
@@ -481,14 +493,14 @@ impl<'input> Scanner<'input> {
                 } else {
                     return Some(Ok((
                         start,
-                        Tok::FLOATLIT(self.input[start..i].to_string()),
+                        Tok::FLOATLIT(self.input[start..i].parse::<f64>().unwrap()),
                         i,
                     )));
                 }
             } else {
                 return Some(Ok((
                     start,
-                    Tok::FLOATLIT(self.input[start..].to_string()),
+                    Tok::FLOATLIT(self.input[start..].parse::<f64>().unwrap()),
                     self.input.len(),
                 )));
             }
@@ -497,6 +509,7 @@ impl<'input> Scanner<'input> {
 
     /// Scan a string literal.
     fn scan_string(&mut self, start: usize) -> Option<ScannerResult<'input>> {
+        self.advance();
         loop {
             if let Some((i, c)) = self.current {
                 match c {
@@ -504,7 +517,7 @@ impl<'input> Scanner<'input> {
                         self.advance();
                         return Some(Ok((
                             start,
-                            Tok::STRINGLIT(self.input[start..(i + 1)].to_string()),
+                            Tok::STRINGLIT(self.input[start + 1..i].to_string()),
                             i + 1,
                         )));
                     }
@@ -521,23 +534,27 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    fn scan_string_escape(&mut self) -> Result<(), Error> {
+    fn scan_string_escape(&mut self) -> Result<char, Error> {
         if let Some((pos, c)) = self.current {
             match c {
-                '\\' | 'n' | 'r' | '0' | 't' | '"' => {
-                    self.advance();
-                    return Ok(());
-                }
+                '\\' => return Ok('\\'),
+                'n' => return Ok('\n'),
+                'r' => return Ok('\r'),
+                '0' => return Ok('\0'),
+                't' => return Ok('\t'),
+                '"' => return Ok('"'),
                 'x' => {
                     self.advance();
                     // scan two hex digits
-                    return self.swallow(2, 2, |q: char| q.is_ascii_hexdigit());
+                    let digits = self.swallow(2, 2, |q: char| q.is_ascii_hexdigit())?;
+                    return Ok(char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap());
                 }
                 'u' => {
                     self.advance();
-                    return self
-                        .swallow_char('{')
-                        .and_then(|()| self.swallow(1, 6, |c| c.is_ascii_hexdigit()));
+                    self.swallow_char('{')?;
+                    let digits = self.swallow(1, 6, |c| c.is_ascii_hexdigit())?;
+                    self.swallow_char('}')?;
+                    return Ok(char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap());
                 }
                 _ => {
                     let (line, column) = self.line_and_col(pos);
@@ -566,14 +583,21 @@ impl<'input> Scanner<'input> {
     /// - max: the maximum number of characters to match.
     /// - pred: a function that returns true if a character is one
     ///    that should be matched.
-    fn swallow(&mut self, min: usize, max: usize, pred: fn(c: char) -> bool) -> Result<(), Error> {
+    fn swallow(
+        &mut self,
+        min: usize,
+        max: usize,
+        pred: fn(c: char) -> bool,
+    ) -> Result<String, Error> {
+        let mut result = String::new();
         for i in 0..max {
             if let Some((pos, c)) = self.current {
                 if pred(c) {
+                    result.push(c);
                     self.advance()
                 } else {
                     if i >= min {
-                        return Ok(());
+                        return Ok(result);
                     } else {
                         let (line, column) = self.line_and_col(pos);
                         return Err(Error::LexicalError {
@@ -586,7 +610,7 @@ impl<'input> Scanner<'input> {
                 }
             } else {
                 if i >= min {
-                    return Ok(());
+                    return Ok(result);
                 } else {
                     let (line, column) = self.line_and_col(self.input.len());
                     return Err(Error::LexicalError {
@@ -597,7 +621,7 @@ impl<'input> Scanner<'input> {
                 }
             }
         }
-        return Ok(());
+        return Ok(result);
     }
 
     /// Similar to [swallow], but it only consumes a single, specific
@@ -625,37 +649,61 @@ impl<'input> Scanner<'input> {
         }
     }
 
+    fn scan_char_escape(&mut self, start: usize) -> ScannerResult {
+        let c = self.scan_string_escape()?;
+        match self.current {
+            Some((end, '\'')) => return Ok((start, Tok::CHARLIT(c), end)),
+            _ => {
+                let (line, column) = self.line_and_col(start);
+                return Err(Error::LexicalError {
+                    line,
+                    column,
+                    message: "Unterminated char literal".to_string(),
+                });
+            }
+        }
+    }
+
     fn scan_char_literal(&mut self, start: usize) -> ScannerResult {
         self.advance();
         // After the "'", we should see either a single character,
         // or an escape code, followed by a single quote.
         if let Some((_, c)) = self.current {
             match c {
-                '\\' => self.scan_string_escape()?,
-                _ => self.advance(),
+                '\\' => return self.scan_char_escape(start),
+                _ => {
+                    self.advance();
+                    match self.current {
+                        Some((end, '\'')) => {
+                            self.advance();
+                            return Ok((start, Tok::CHARLIT(c), end));
+                        }
+                        Some((i, _)) => {
+                            let (line, column) = self.line_and_col(i);
+                            return Err(Error::LexicalError {
+                                line,
+                                column,
+                                message: "Invalid character literal".to_string(),
+                            });
+                        }
+                        _ => {
+                            let (line, column) = self.line_and_col(self.input.len());
+                            return Err(Error::LexicalError {
+                                line,
+                                column,
+                                message: "Invalid character literal".to_string(),
+                            });
+                        }
+                    }
+                }
             }
-        }
-        match self.current {
-            Some((end, '\'')) => {
-                self.advance();
-                return Ok((start, Tok::CHARLIT(self.input[start..end].to_string()), end));
-            }
-            Some((i, _)) => {
-                let (line, column) = self.line_and_col(i);
-                return Err(Error::LexicalError {
-                    line,
-                    column,
-                    message: "Invalid character literal".to_string(),
-                });
-            }
-            _ => {
-                let (line, column) = self.line_and_col(self.input.len());
-                return Err(Error::LexicalError {
-                    line,
-                    column,
-                    message: "Invalid character literal".to_string(),
-                });
-            }
+        } else {
+            let (line, column) = self.line_and_col(start);
+            return Err(Error::LexicalError {
+                line,
+                column,
+                message: "Invalid character literal".to_string(),
+            });
         }
     }
 }

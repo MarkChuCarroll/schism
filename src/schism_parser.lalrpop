@@ -1,6 +1,7 @@
 use crate::lex;
 use crate::ast;
 use crate::error;
+use lalrpop_util::ParseError;
 
 grammar;
 
@@ -47,8 +48,19 @@ pub FunctionDecl: ast::FunctionDecl = {
 }
 
 pub StackEffect: ast::StackEffect = {
-    "(" <before:StackImage> "--" <after:StackImage>  ")" =>
-    ast::StackEffect{before, after}
+    "(" <before:StackImage> "--" <after:StackImage>  ")" =>? {
+            let iv = before.0.unwrap_or_else(|| ast::StackImage::unique_image_var());
+            Ok(ast::StackEffect{
+                before: ast::StackImage{
+                    stack_var: iv.clone(),
+                    stack: before.1
+                },
+                after: ast::StackImage{
+                    stack_var: after.0.unwrap_or(iv),
+                    stack: after.1
+                }
+            })
+        }
 }
 
 pub TypeParamBlock: Vec<ast::TypeParam> = {
@@ -78,18 +90,9 @@ pub TypeArgBlock: Vec<ast::SType> = {
     "[" <Comma<Type>>  "]"
 }
 
-pub StackImage: ast::StackImage = {
-    <context:StackContextVar?> <types:Comma<Type>> =>
-        match context {
-            Some(context) => ast::StackImage{
-                stack_var: context,
-                stack: types
-            },
-            None => ast::StackImage{
-                stack_var: ast::Symbol(ast::StackImage::unique_image_var()),
-                stack: types
-            }
-        }
+pub StackImage: (Option<ast::Symbol>, Vec<ast::SType>) = {
+    <context:StackContextVar?> <types: Type*> =>
+            (context,  types)
 }
 
 pub StackContextVar: ast::Symbol = {
@@ -131,7 +134,7 @@ pub StructMethodDecl: ast::MethodDecl = {
 }
 
 pub Expr: ast::Expr = {
-    <id:Ident> => ast::Expr::FunCall(ast::FunCallExpr(id)),
+    <f:FunCallExpr> => ast::Expr::FunCall(f),
     <l:ListExpr> => ast::Expr::List(l),
     <m:MapExpr> => ast::Expr::Map(m),
     <c:CondExpr> => ast::Expr::Cond(c),
@@ -142,6 +145,13 @@ pub Expr: ast::Expr = {
    <f:FLOATLIT> => ast::Expr::FloatLit(f),
    <s:STRINGLIT> => ast::Expr::StringLit(s),
    <c:CHARLIT> => ast::Expr::CharLit(c)
+}
+
+pub FunCallExpr: ast::FunCallExpr = {
+    <bl:TypeArgBlock?> <id:Ident> => ast::FunCallExpr{
+        id,
+        type_args: bl
+    },
 }
 
 pub CondExpr: ast::CondExpr = {
@@ -166,16 +176,16 @@ pub Pair: (Vec<ast::Expr>, Vec<ast::Expr>) = {
 
 pub MethodCallExpr: ast::MethodCallExpr = {
     "<-" <s:Symbol> =>
-        ast::MethodCallExpr(s)
+        ast::MethodCallExpr{ sym: s }
 }
 
 pub Block: ast::BlockExpr = {
-    "[|" <effect:StackEffect>  <body:Expr*> "|]" =>
-        ast::BlockExpr(effect, body)
+    "[[" <effect:StackEffect>  <body:Expr*> "]]" =>
+        ast::BlockExpr{effect, body}
 }
 
 pub LoopExpr: ast::LoopExpr = {
-    "loop" <es:Expr+> "end" => ast::LoopExpr(es)
+    "loop" <es:Expr+> "end" => ast::LoopExpr{ body: es }
 }
 
 Comma<T>: Vec<T> = {
@@ -201,8 +211,8 @@ extern {
         "]#" => lex::Tok::PRBRACK,
         "#{" => lex::Tok::PLBRACE,
         "}#" => lex::Tok::PRBRACE,
-        "[|" => lex::Tok::BLOPEN,
-        "|]" => lex::Tok::BLCLOSE,
+        "[[" => lex::Tok::BLOPEN,
+        "]]" => lex::Tok::BLCLOSE,
         "|" => lex::Tok::BAR,
         "<-" => lex::Tok::SEND,
         "fun" => lex::Tok::FUN,
@@ -227,10 +237,10 @@ extern {
         "else" => lex::Tok::ELSE,
         "loop" => lex::Tok::LOOP,
 
-        INTLIT => lex::Tok::INTLIT(<String>),
-        FLOATLIT => lex::Tok::FLOATLIT(<String>),
+        INTLIT => lex::Tok::INTLIT(<i64>),
+        FLOATLIT => lex::Tok::FLOATLIT(<f64>),
         STRINGLIT => lex::Tok::STRINGLIT(<String>),
-        CHARLIT => lex::Tok::CHARLIT(<String>),
+        CHARLIT => lex::Tok::CHARLIT(<char>),
     }
 }
 
