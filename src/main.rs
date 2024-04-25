@@ -1,10 +1,10 @@
 #[macro_use]
 extern crate lalrpop_util;
 
-lalrpop_mod!(pub schism_parser); // synthesized by LALRPOP
+lalrpop_mod!(parser, "/parser/schism.rs");
 
 mod ast;
-mod error;
+mod errors;
 mod lex;
 mod twist;
 

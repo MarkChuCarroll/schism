@@ -1,7 +1,7 @@
-use crate::ast::Renderable;
-use crate::{ast, lex, schism_parser};
+use crate::twist::{Twist, Twistable};
+use crate::{ast::LowerName, lex, parser::DefinitionParser};
 
-fn assert_token_is<'input>(result: Option<lex::ScannerResult<'input>>, expected: lex::Tok) {
+fn assert_token_is<'input>(result: Option<lex::ScannerResult<'input>>, expected: lex::Token) {
     assert!(result.is_some());
     let (_, t, _) = result.unwrap().unwrap();
     assert_eq!(expected, t)
@@ -9,70 +9,64 @@ fn assert_token_is<'input>(result: Option<lex::ScannerResult<'input>>, expected:
 
 #[test]
 pub fn test_scan_symbols_and_idents() {
-    let mut lex = lex::Scanner::new("foo".to_string(), "foo bar/baz + 23\nbli");
+    let mut lex = lex::Scanner::new("foo bar/baz + 23\nbli");
 
-    assert_token_is(lex.scan_token(), lex::Tok::SYMBOL("foo".to_string()));
-    assert_token_is(lex.scan_token(), lex::Tok::SYMBOL("bar/baz".to_string()));
-    assert_token_is(lex.scan_token(), lex::Tok::SYMBOL("+".to_string()));
-    assert_token_is(lex.scan_token(), lex::Tok::INTLIT(23));
-    assert_token_is(lex.scan_token(), lex::Tok::SYMBOL("bli".to_string()))
-}
-
-#[test]
-pub fn test_scan_syntax() {
-    let mut lex = lex::Scanner::new(
-        "foo".to_string(),
-        "| << <- {{ #[ # ]# }# #{last# [[]] (x,y): --",
+    assert_token_is(
+        lex.scan_token(),
+        lex::Token::LName(LowerName("foo".to_string())),
     );
-    assert_token_is(lex.scan_token(), lex::Tok::BAR);
-    assert_token_is(lex.scan_token(), lex::Tok::SUBTYPE);
-    assert_token_is(lex.scan_token(), lex::Tok::SEND);
-    assert_token_is(lex.scan_token(), lex::Tok::LBRACE);
-    assert_token_is(lex.scan_token(), lex::Tok::LBRACE);
-    assert_token_is(lex.scan_token(), lex::Tok::PLBRACK);
-    assert_token_is(lex.scan_token(), lex::Tok::POUND);
-    assert_token_is(lex.scan_token(), lex::Tok::PRBRACK);
-    assert_token_is(lex.scan_token(), lex::Tok::PRBRACE);
-    assert_token_is(lex.scan_token(), lex::Tok::PLBRACE);
-    assert_token_is(lex.scan_token(), lex::Tok::SYMBOL("last".to_string()));
-    assert_token_is(lex.scan_token(), lex::Tok::POUND);
-    assert_token_is(lex.scan_token(), lex::Tok::BLOPEN);
-    assert_token_is(lex.scan_token(), lex::Tok::BLCLOSE);
-    assert_token_is(lex.scan_token(), lex::Tok::LPAREN);
-    assert_token_is(lex.scan_token(), lex::Tok::SYMBOL("x".to_string()));
-    assert_token_is(lex.scan_token(), lex::Tok::COMMA);
-    assert_token_is(lex.scan_token(), lex::Tok::SYMBOL("y".to_string()));
-    assert_token_is(lex.scan_token(), lex::Tok::RPAREN);
-    assert_token_is(lex.scan_token(), lex::Tok::COLON);
-    assert_token_is(lex.scan_token(), lex::Tok::DASHDASH);
+    assert_token_is(
+        lex.scan_token(),
+        lex::Token::LName(LowerName("bar/baz".to_string())),
+    );
+    assert_token_is(
+        lex.scan_token(),
+        lex::Token::LName(LowerName("+".to_string())),
+    );
+    assert_token_is(lex.scan_token(), lex::Token::INTLIT(23));
+    assert_token_is(
+        lex.scan_token(),
+        lex::Token::LName(LowerName("bli".to_string())),
+    )
 }
 
 #[test]
 pub fn test_scan_literals() {
-    let mut lex = lex::Scanner::new(
-        "foo".to_string(),
-        "\"this is a string\" 27 13.2 -4.0e5 'a'\"",
-    );
+    let mut lex = lex::Scanner::new("\"this is a string\" 27 13.2 -4.0e5 'a'\"");
 
     assert_token_is(
         lex.scan_token(),
-        lex::Tok::STRINGLIT("this is a string".to_string()),
+        lex::Token::STRINGLIT("this is a string".to_string()),
     );
-    assert_token_is(lex.scan_token(), lex::Tok::INTLIT(27));
-    assert_token_is(lex.scan_token(), lex::Tok::FLOATLIT(13.2));
-    assert_token_is(lex.scan_token(), lex::Tok::FLOATLIT(-4.0e5));
-    assert_token_is(lex.scan_token(), lex::Tok::CHARLIT('a'));
+    assert_token_is(lex.scan_token(), lex::Token::INTLIT(27));
+    assert_token_is(lex.scan_token(), lex::Token::FLOATLIT("13.2".to_string()));
+    assert_token_is(lex.scan_token(), lex::Token::FLOATLIT("-4.0e5".to_string()));
+    assert_token_is(lex.scan_token(), lex::Token::CHARLIT('a'));
 }
 
 #[test]
 pub fn test_parse_fun() {
-    ast::StackImage::reset_index();
     let funstr = "
-    fun foo ( int str -- float ) is
+    fun foo ( Int Str -- Float ) do
         dup * /
     end
     ";
+    let parsed = DefinitionParser::new().parse(lex::Scanner::new(funstr));
+    assert!(parsed.is_ok());
+    let def = parsed.expect("Should have succeeded");
+    let t = def.twist();
+    let mut rendered = String::new();
+    t.render(&mut rendered, 1);
 
+    let mut code = String::new();
+    let expected = mk_expected_fun();
+    let mut expected_str = String::new();
+    expected.render(&mut expected_str, 1);
+
+    assert_eq!(expected_str, rendered)
+}
+
+/*
     // This is annoyingly laborious - but how else to praperly test a
     // parser than to ensure that it generates the right AST?
     let se = ast::StackEffect {
@@ -137,6 +131,7 @@ pub fn parse_struct() {
         end
     end
     ";
+
 
     let block = ast::BlockExpr {
         effect: ast::StackEffect {
@@ -263,7 +258,7 @@ pub fn parse_struct() {
 
     let parsed: Result<
         crate::ast::Sect,
-        lalrpop_util::ParseError<usize, lex::Tok, crate::error::Error>,
+        lalrpop_util::ParseError<usize, lex::Token, crate::error::Error>,
     > = schism_parser::SectParser::new().parse(lex::Scanner::new("foo".to_string(), structstr));
 
     let parsed_str = parsed.unwrap().to_string();
@@ -276,7 +271,7 @@ pub fn test_parse_harder_fun() {
     ast::StackImage::reset_index();
     let funstr = "
     fun meta ( @A int (@A int -- @B) --  @B) is
-		[int]twiddle swap apply
+        [int]twiddle swap apply
     end
     ";
 
@@ -345,28 +340,28 @@ pub fn test_parse_harder_fun() {
 pub fn test_parse_lots_of_stuff() {
     ast::StackImage::reset_index();
     let funstr = "
-	use lib::blob{that, +, ^squid^}
-	use squirt::squat::squit
+    use lib::blob{that, +, ^squid^}
+    use squirt::squat::squit
 
-	struct [`a, `b] Squortle ( that ) is
-		slot foo: [int, `a]List
+    struct [`a, `b] Squortle ( that ) is
+        slot foo: [int, `a]List
 
-		meth m ( int -- str) is
-		   + - /
-		   if
-			   aoeuaoeu /* test a comment */
-		   else
-			   [[ ( -- )  \"abc\" print]]
-		   end
-		end
-	end
+        meth m ( int -- str) is
+           + - /
+           if
+               aoeuaoeu /* test a comment */
+           else
+               [[ ( -- )  \"abc\" print]]
+           end
+        end
+    end
 
-	var q: [int, str]Squortle init
-	   31 ua set!
-	end
+    var q: [int, str]Squortle init
+       31 ua set!
+    end
 
     fun meta ( @A int (@A int -- @B) --  @B) is
-		[int]twiddle swap apply
+        [int]twiddle swap apply
     end
     ";
 
@@ -409,4 +404,64 @@ pub fn test_parse_lots_of_stuff() {
 
     let parsed_str = parsed.unwrap().to_string();
     assert_eq!(expected, parsed_str);
+}
+*/
+
+fn mk_expected_fun() -> Twist {
+    Twist::obj(
+        "Function",
+        vec![
+            Twist::attr("name", "foo".to_string()),
+            Twist::arr("type_params", vec![]),
+            Twist::val(
+                "effect",
+                Twist::obj(
+                    "StackEffect",
+                    vec![
+                        Twist::arr("effect_domains", vec![]),
+                        Twist::val(
+                            "before",
+                            Twist::obj(
+                                "StackImage",
+                                vec![Twist::arr(
+                                    "Stack",
+                                    vec![
+                                        Twist::obj(
+                                            "SimpleType",
+                                            vec![Twist::attr("id", "Int".to_string())],
+                                        ),
+                                        Twist::obj(
+                                            "SimpleType",
+                                            vec![Twist::attr("id", "Str".to_string())],
+                                        ),
+                                    ],
+                                )],
+                            ),
+                        ),
+                        Twist::val(
+                            "after",
+                            Twist::obj(
+                                "StackImage",
+                                vec![Twist::arr(
+                                    "Stack",
+                                    vec![Twist::obj(
+                                        "SimpleType",
+                                        vec![Twist::attr("id", "Float".to_string())],
+                                    )],
+                                )],
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+            Twist::arr(
+                "body",
+                vec![
+                    Twist::attr("InvokeName", "dup".to_string()),
+                    Twist::attr("InvokeName", "*".to_string()),
+                    Twist::attr("InvokeName", "/".to_string()),
+                ],
+            ),
+        ],
+    )
 }

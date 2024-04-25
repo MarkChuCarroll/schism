@@ -1,0 +1,364 @@
+use crate::lex;
+use crate::ast;
+use crate::errors;
+use lalrpop_util::ParseError;
+
+grammar;
+
+
+pub Sect: ast::Sect = {
+    <uses:UseDecl*>  <defs:Definition+>   => ast::Sect{uses, defs}
+}
+
+#[inline]
+Path: ast::ModulePath = {
+    <("." <LowerName>)+>
+}
+
+UseDecl: ast::UseDecl = {
+    "use" <path:Path> "." "{"
+        <type_names:Separated<UpperName, ",">>
+        <function_names:Separated<LowerName, ",">>
+    "}" => ast::UseDecl {
+        sect: path,
+        type_names,
+        function_names
+    }
+}
+
+TypeIdent: ast::TypeIdent = {
+    <p:Path> ":" <name:UpperName> => ast::Ident::Scoped{path: p, name},
+    <name:UpperName> => ast::Ident::Local(name)
+}
+
+LIdent: ast::LowerIdent = {
+    <p:Path> ":" <name:LowerName> => ast::Ident::Scoped{path: p, name},
+    <name:LowerName> => ast::Ident::Local(name)
+}
+
+pub Definition: ast::Definition = {
+    <SigDef> => ast::Definition::Sig(<>),
+    <ObjectDef> => ast::Definition::Obj(<>),
+    <FunctionDef> => ast::Definition::Function(<>),
+    <VarDef> => ast::Definition::Var(<>)
+}
+
+TypeParamSpecList: Vec<ast::TypeParam> = {
+    "[" <NonEmptySeparated<TypeParam, ",">> "]",
+    => Vec::new()
+}
+
+TypeParam: ast::TypeParam = {
+    <name:TypeVarName> <constraint:(":" <SchismType>)?> => ast::TypeParam{name, constraint}
+}
+
+SchismType: ast::SchismType = {
+    <name:TypeIdent> <type_args_opt:Bracketed<"[", Separated<Boxed<SchismType>, ",">, "]">?> =>
+       match type_args_opt {
+        Some(type_args) => ast::SchismType::ParametricType(name, type_args),
+        None => ast::SchismType::SimpleType(name)
+       },
+       <tv:TypeVarName> => ast::SchismType::UnboundTypeVar(tv),
+       <ft:StackEffect> => ast::SchismType::FunctionType(ft)
+}
+
+ComposesClause: Vec<ast::SchismType> = {
+    "composes" <NonEmptySeparated<SchismType, ",">>,
+    => Vec::new()
+}
+
+SigDef: ast::SigDef = {
+    "sig" <u:UpperName>
+       <tps:TypeParamSpecList>
+       <composes:ComposesClause>
+       "is"
+       <ops:OperationSig+>
+       "end" ("@sig")? => ast::SigDef{
+          name: u,
+          type_params: tps,
+          composes,
+          operations: ops
+       }
+}
+
+OperationSig: ast::OperationSig = {
+    "method" <name:LowerName> <effect:StackEffect> => ast::OperationSig::MethodSig{name, effect},
+    "action" <name:LowerName> <inputs:StackImage> => ast::OperationSig::ActionSig{name, inputs}
+}
+
+StackImage: ast::StackImage = {
+    <context:ContextName?>
+    <stack:StackEntry*> => ast::StackImage{context, stack}
+}
+
+StackEntry: ast::StackEntry = {
+    <name:(<LowerName> ":")?>  <st:SchismType> => match name {
+        Some(n) =>  ast::StackEntry::NamedEntry(n, Box::new(st)),
+        None =>  ast::StackEntry::TypeEntry(Box::new(st))
+    }
+}
+
+StackEffect: ast::StackEffect = {
+    "("
+    <dom:EffectDomainList>
+    <before:StackImage> "--"
+    <after:StackImage>
+    ")" =>  ast::StackEffect{ effect_domains: dom,
+                before,
+                after}
+}
+
+EffectDomainList: Vec<ast::TypeIdent> = {
+    <Bracketed<"[", NonEmptySeparated<TypeIdent, ",">, "]">>,
+    => Vec::new()
+}
+
+ObjectDef: ast::ObjectDef = {
+    "obj" <name:UpperName> <tps:TypeParamSpecList> <c:ComposesClause>
+     "(" <inputs:StackImage> ")"
+    "is"
+    <members:ObjectMemberDecl+> "do"
+    <body:Statement*>
+    "end" ("@obj")? => ast::ObjectDef{
+        name, type_params: tps, composes: c,
+        inputs, members, body
+    }
+}
+
+ObjectMemberDecl: ast::ObjectMemberDecl = {
+    <SlotDecl>,
+    <MethodDecl>,
+    <ActionDecl>
+}
+
+SlotDecl: ast::ObjectMemberDecl = {
+    "slot" <name:LowerName> ":" <value_type:SchismType> "(" <inputs:StackImage> ")"
+    "init" <body:Statement*> "end" ("@slot")? => ast::ObjectMemberDecl::ObjectSlot{
+        name, value_type, inputs, body
+    }
+}
+
+MethodDecl: ast::ObjectMemberDecl = {
+    "method" <name:LowerName> <effect:StackEffect> "do"
+      <body:Statement*>
+      "end" ("@method")? =>
+        ast::ObjectMemberDecl::ObjectMethod{
+            name, effect, body
+        }
+}
+
+ActionDecl: ast::ObjectMemberDecl = {
+    "action" <name:LowerName> "(" <inputs:StackImage> ")"
+    "do" <body:Statement*> "end" ("@action")? =>
+    ast::ObjectMemberDecl::ObjectAction{
+        name, inputs, body
+    }
+}
+
+FunctionDef: ast::FunctionDef = {
+    "function" <name:LowerName> <tps:TypeParamSpecList> <effect:StackEffect> "do"
+      <body:Statement*>
+      "end" ("@function")? =>
+        ast::FunctionDef {
+            name,
+            type_params: tps,
+            effect, body
+        }
+}
+
+VarDef: ast::VarDef = {
+    "var" <name:LowerName> <value_type:SchismType> "(" <inputs:StackImage> ")"
+    "init" <body:Statement+> "end" ("@var")? =>
+    ast::VarDef {
+        name, value_type, inputs, body
+    }
+}
+
+Statement: ast::Statement = {
+    <Immediate>,
+    <LocalStmt>,
+    <NewStmt>,
+    <DispatchStmt>,
+    <CallStmt>,
+    <CondStmt>,
+    <LoopStmt>,
+    <ForStmt>,
+    <ExitStmt>,
+    <NextStmt>
+}
+
+LoopStmt: ast::Statement = {
+    "loop" <label:LowerName?> "do"
+    <body:Boxed<Statement>+>
+    "end" ("@loop")? => ast::Statement::LoopStmt{ label, body }
+}
+
+ForStmt: ast::Statement = {
+    "for" <idx:LowerName> "do" <body:Boxed<Statement>+> "end" ("@for")? =>
+    ast::Statement::ForStmt{idx, body}
+}
+
+ExitStmt: ast::Statement = {
+    "exit" <label:Bracketed<"(",LowerName,")">?> => ast::Statement::ExitStmt(label)
+}
+
+NextStmt: ast::Statement = {
+    "next" <label:Bracketed<"(",LowerName,")">?> => ast::Statement::NextStmt(label)
+}
+
+CondStmt: ast::Statement = {
+    "cond"
+      <clauses:CondClause+>
+      <else_clause:ElseClause>
+      "end" ("@cond")? =>       ast::Statement::CondStmt{clauses, else_clause}
+}
+
+ElseClause: Vec<Box<ast::Statement>> = {
+    "else" <Boxed<Statement>+>,
+    => Vec::new()
+}
+
+CondClause: ast::CondClause = {
+      <cond:Boxed<BlockExpr>> "do" <body:Boxed<Statement>+> "end" =>
+        ast::CondClause{
+            condition: cond,
+            body
+        }
+}
+
+LocalStmt: ast::Statement = {
+    "local" <name:LowerName> => ast::Statement::Local(name)
+}
+
+NewStmt: ast::Statement = {
+    "new" <object_type:SchismType> => ast::Statement::New(object_type)
+}
+
+DispatchStmt: ast::Statement = {
+    "->" <name:LIdent> => ast::Statement::DispatchStmt(name)
+}
+
+CallStmt: ast::Statement = {
+    "!" <name:LIdent> => ast::Statement::CallStmt(name)
+}
+
+Immediate: ast::Statement = {
+    <STRINGLIT> => ast::Statement::StringLit(<>),
+    <INTLIT> => ast::Statement::IntLit(<>),
+    <CHARLIT> => ast::Statement::CharLit(<>),
+    <FLOATLIT> => ast::Statement::FloatLit(<>),
+    <SequenceExpr>,
+    <LIdent> => ast::Statement::Name(<>),
+    <BlockExpr>
+}
+
+SequenceExpr: ast::Statement = {
+    "[|" <body:Boxed<BlockExpr>+> "|]" => ast::Statement::Sequence(body)
+}
+
+BlockExpr: ast::Statement = {
+    "{" <effect:StackEffect> <body:Boxed<Statement>*>
+    "}" => ast::Statement::Block(body, effect)
+}
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T> => {
+                    v.push(e);
+                    v
+    }
+};
+
+NonEmptySeparated<NonTerm, Sep>: Vec<NonTerm> = {
+    <mut v:(<NonTerm> Sep )*>  <nt:NonTerm> => {
+        v.push(nt);
+        v
+    }
+}
+
+Separated<NonTerm, Sep>: Vec<NonTerm> = {
+    <mut v:(<NonTerm> Sep )*>  <nt:NonTerm> => {
+        v.push(nt);
+        v
+    },
+     => Vec::new()
+}
+
+Preceded<Pre, NonTerm>: NonTerm = {
+    Pre <NonTerm>
+}
+
+Bracketed<Pre, NonTerm, Post>: NonTerm = {
+    Pre <NonTerm> Post
+}
+
+Boxed<T>: Box<T> = {
+    <t:T> => Box::new(t)
+}
+
+
+extern {
+    type Location = lex::Location;
+    type Error = errors::CompilationError;
+    enum lex::Token {
+        "." => lex::Token::DOT,
+        ":" => lex::Token::COLON,
+        "," => lex::Token::COMMA,
+        "--" => lex::Token::DASHDASH,
+        "->" => lex::Token::ARROW,
+        "!" => lex::Token::BANG,
+
+        "[" => lex::Token::LBRACK,
+        "]" => lex::Token::RBRACK,
+        "[|" => lex::Token::LBRACKBAR,
+        "|]" => lex::Token::RBRACKBAR,
+        "(" => lex::Token::LPAREN,
+        ")" => lex::Token::RPAREN,
+        "{" => lex::Token::LCURLY,
+        "}" => lex::Token::RCURLY,
+
+
+        "action" => lex::Token::ACTION,
+        "@action" => lex::Token::ATACTION,
+        "composes" => lex::Token::COMPOSES,
+        "cond" => lex::Token::COND,
+        "@cond" => lex::Token::ATCOND,
+        "do" => lex::Token::DO,
+        "end" => lex::Token::END,
+        "else" => lex::Token::ELSE,
+        "exit" => lex::Token::EXIT,
+        "for" => lex::Token::FOR,
+        "@for" => lex::Token::FOR,
+        "function" => lex::Token::FUNCTION,
+        "@function" => lex::Token::ATFUNCTION,
+        "init" => lex::Token::INIT,
+        "is" => lex::Token::IS,
+        "local" => lex::Token::LOCAL,
+        "loop" => lex::Token::LOOP,
+        "@loop" => lex::Token::ATLOOP,
+        "method" => lex::Token::METHOD,
+        "@method" => lex::Token::ATMETHOD,
+        "next" => lex::Token::NEXT,
+        "new" => lex::Token::NEW,
+        "obj" => lex::Token::OBJ,
+        "@obj" => lex::Token::ATOBJ,
+        "sig" => lex::Token::SIG,
+        "@sig" => lex::Token::ATSIG,
+        "slot" => lex::Token::SLOT,
+        "@slot" => lex::Token::ATSLOT,
+        "use" => lex::Token::USE,
+        "var" => lex::Token::VAR,
+        "@var" => lex::Token::ATVAR,
+
+
+
+        LowerName => lex::Token::LName(<ast::LowerName>),
+        UpperName => lex::Token::UName(<ast::UpperName>),
+        ContextName => lex::Token::CName(<ast::ContextName>),
+        TypeVarName => lex::Token::TVName(<ast::TypeVarName>),
+        INTLIT => lex::Token::INTLIT(<i64>),
+        FLOATLIT => lex::Token::FLOATLIT(<String>),
+        STRINGLIT => lex::Token::STRINGLIT(<String>),
+        CHARLIT => lex::Token::CHARLIT(<char>),
+    }
+}
+
