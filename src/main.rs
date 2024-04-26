@@ -21,6 +21,7 @@ mod ast;
 mod errors;
 mod lex;
 mod twist;
+mod compiler;
 
 #[cfg(test)]
 mod tests;

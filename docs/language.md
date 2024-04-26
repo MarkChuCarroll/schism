@@ -17,7 +17,8 @@ idea of building systems that don't use state for everything is fantastic,
 and I'd really like to see more of it. But at the same time, I think
 that functional languages have typically fallen down in a few areas:
 
-1. Syntax. They're often read as gobbledegook. In particular, points-free code in a language like Haskell is, to me at least, completely impenetrable.
+1. Syntax. They're often read as gobbledegook. In particular, points-free code 
+  in a language like Haskell is, to me at least, completely impenetrable.
 2. Laziness. I get the attraction of laziness. But in practice, I just
  don't buy it. It's hard to predict the performance of a complex lazy
  system, and I've seen experts get it wrong, because it's just so
@@ -65,10 +66,20 @@ The things that can be declared are:
   declaration needs to describe the shape of the stack both before
   and after the invocation, using a stack-effect, which I'll describe
   below.
-* Structs. Structs are basically classes. They declare a type of
-  object, a set of superclasses that they inherit from, a collection
-  of fields, and a collection of methods.
-* Variables.
+* Objects, which are the schism version of classes. They declare a
+  type of object, a set of parent objects that are composed into
+  the object types, and a collection of object members. Object
+  members come in three kinds:
+   * slots, which are basically object properties/fields.
+   * methods,  which are operations implemented as synchronous
+     functions by the object.
+   * actions, which are asynchronous operations implemented by
+     the object. More about actions below.
+* Variables. Obvious.
+* Signatures. Basically interfaces. Like Go, you don't have to
+  declare what signatures you implement: if you implement
+  the methods and actions in a signature, that's good enough.
+
 
 ### Functions
 
@@ -93,4 +104,19 @@ fun ['a, 'b, 'c] third ( 'a 'b 'c -- 'a 'b 'c 'a ) is
     a b c a  /* push a, then b, then c, then a - so the stack is now (a b c a). */
 end
 ```
+### Actions
+
+Actions are where concurrency shows its head in Schism. When
+you call an action, a new stack is created, the parameters
+declared in the action's type are moved into that new stack,
+and the action starts executing using that stack in a new
+thread. Actions don't return results: they're just off,
+running. To get a result back, you need to either provide
+a callback action, or use a synchronizing value like
+a semaphore.
+
+The catch here is that an object is single-threaded: if
+there's an action or method currently running, the
+action execution will be deferred until that action/method
+is done. 
 

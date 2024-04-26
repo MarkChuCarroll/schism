@@ -25,8 +25,9 @@ pub Sect: ast::Sect = {
 }
 
 #[inline]
-Path: ast::identifiers::ModulePath = {
-    <("." <LowerName>)+>
+Path: ast::ModulePath = {
+    <segments:("." <LowerName>)+>
+        => ast::ModulePath{segments}
 }
 
 UseDecl: ast::UseDecl = {
@@ -41,18 +42,18 @@ UseDecl: ast::UseDecl = {
         }
 }
 
-TypeIdent: ast::identifiers::TypeIdent = {
+TypeIdent: ast::TypeIdent = {
     <p:Path> ":" <name:UpperName>
-        => ast::identifiers::Ident::Scoped{path: p, name},
+        => ast::Ident::Scoped{path: p, name},
     <name:UpperName>
-        => ast::identifiers::Ident::Local(name)
+        => ast::Ident::Local(name)
 }
 
-LIdent: ast::identifiers::LowerIdent = {
+LIdent: ast::LowerIdent = {
     <p:Path> ":" <name:LowerName>
-        => ast::identifiers::Ident::Scoped{path: p, name},
+        => ast::Ident::Scoped{path: p, name},
     <name:LowerName>
-        => ast::identifiers::Ident::Local(name)
+        => ast::Ident::Local(name)
 }
 
 pub Definition: ast::Definition = {
@@ -143,7 +144,7 @@ StackEffect: ast::StackEffect = {
         }
 }
 
-EffectDomainList: Vec<ast::identifiers::TypeIdent> = {
+EffectDomainList: Vec<ast::TypeIdent> = {
     <Bracketed<"[", NonEmptySeparated<TypeIdent, ",">, "]">>,
         => Vec::new()
 }
@@ -210,7 +211,7 @@ FunctionDef: ast::FunctionDef = {
 }
 
 VarDef: ast::VarDef = {
-    "var" <name:LowerName>
+    "var" <name:LowerName> ":"
      <value_type:SchismType>
     "(" <inputs:StackImage> ")"
     "init" <body:Statement+> "end" ("@var")?
@@ -299,13 +300,13 @@ CallStmt: ast::Statement = {
 }
 
 Immediate: ast::Statement = {
-    <STRINGLIT>
-        => ast::Statement::StringLit(<>),
-    <INTLIT>
+    <sl:StringLit>
+        => ast::Statement::StringLit(sl),
+    <IntLit>
         => ast::Statement::IntLit(<>),
-    <CHARLIT>
+    <CharLit>
         => ast::Statement::CharLit(<>),
-    <FLOATLIT>
+    <FloatLit>
         => ast::Statement::FloatLit(<>),
     <SequenceExpr>,
     <LIdent>
@@ -344,7 +345,8 @@ Separated<NonTerm, Sep>: Vec<NonTerm> = {
 }
 
 Bracketed<Pre, NonTerm, Post>: NonTerm = {
-    Pre <NonTerm> Post
+    Pre <n:NonTerm> Post
+        => n
 }
 
 Boxed<T>: Box<T> = {
@@ -357,63 +359,63 @@ extern {
     type Location = lex::Location;
     type Error = errors::CompilationError;
     enum lex::Token {
-        "." => lex::Token::DOT,
-        ":" => lex::Token::COLON,
-        "," => lex::Token::COMMA,
-        "--" => lex::Token::DASHDASH,
-        "->" => lex::Token::ARROW,
-        "!" => lex::Token::BANG,
+        "." => lex::Token::Dot,
+        ":" => lex::Token::Colon,
+        "," => lex::Token::Comma,
+        "--" => lex::Token::DashDash,
+        "->" => lex::Token::Arrow,
+        "!" => lex::Token::Bang,
 
-        "[" => lex::Token::LBRACK,
-        "]" => lex::Token::RBRACK,
-        "[|" => lex::Token::LBRACKBAR,
-        "|]" => lex::Token::RBRACKBAR,
-        "(" => lex::Token::LPAREN,
-        ")" => lex::Token::RPAREN,
-        "{" => lex::Token::LCURLY,
-        "}" => lex::Token::RCURLY,
+        "[" => lex::Token::LBracket,
+        "]" => lex::Token::RBracket,
+        "[|" => lex::Token::LBracketBar,
+        "|]" => lex::Token::RBracketBar,
+        "(" => lex::Token::LParen,
+        ")" => lex::Token::RParen,
+        "{" => lex::Token::LCurly,
+        "}" => lex::Token::RCurly,
 
-        "action" => lex::Token::ACTION,
-        "@action" => lex::Token::ATACTION,
-        "composes" => lex::Token::COMPOSES,
-        "cond" => lex::Token::COND,
-        "@cond" => lex::Token::ATCOND,
-        "do" => lex::Token::DO,
-        "end" => lex::Token::END,
-        "else" => lex::Token::ELSE,
-        "exit" => lex::Token::EXIT,
-        "for" => lex::Token::FOR,
-        "@for" => lex::Token::FOR,
-        "function" => lex::Token::FUNCTION,
-        "@function" => lex::Token::ATFUNCTION,
-        "init" => lex::Token::INIT,
-        "is" => lex::Token::IS,
-        "local" => lex::Token::LOCAL,
-        "loop" => lex::Token::LOOP,
-        "@loop" => lex::Token::ATLOOP,
-        "meth" => lex::Token::METHOD,
-        "@meth" => lex::Token::ATMETHOD,
-        "next" => lex::Token::NEXT,
-        "new" => lex::Token::NEW,
-        "obj" => lex::Token::OBJ,
-        "@obj" => lex::Token::ATOBJ,
-        "sig" => lex::Token::SIG,
-        "@sig" => lex::Token::ATSIG,
-        "slot" => lex::Token::SLOT,
-        "@slot" => lex::Token::ATSLOT,
-        "use" => lex::Token::USE,
-        "var" => lex::Token::VAR,
-        "@var" => lex::Token::ATVAR,
+        "action" => lex::Token::Action,
+        "@action" => lex::Token::AtAction,
+        "composes" => lex::Token::Composes,
+        "cond" => lex::Token::Cond,
+        "@cond" => lex::Token::AtCond,
+        "do" => lex::Token::Do,
+        "end" => lex::Token::End,
+        "else" => lex::Token::Else,
+        "exit" => lex::Token::Exit,
+        "for" => lex::Token::For,
+        "@for" => lex::Token::AtFor,
+        "function" => lex::Token::Func,
+        "@function" => lex::Token::AtFunc,
+        "init" => lex::Token::Init,
+        "is" => lex::Token::Is,
+        "local" => lex::Token::Local,
+        "loop" => lex::Token::Loop,
+        "@loop" => lex::Token::AtLoop,
+        "meth" => lex::Token::Method,
+        "@meth" => lex::Token::AtMethod,
+        "next" => lex::Token::Next,
+        "new" => lex::Token::New,
+        "obj" => lex::Token::Obj,
+        "@obj" => lex::Token::AtObj,
+        "sig" => lex::Token::Sig,
+        "@sig" => lex::Token::AtSig,
+        "slot" => lex::Token::Slot,
+        "@slot" => lex::Token::AtSlot,
+        "use" => lex::Token::Use,
+        "var" => lex::Token::Var,
+        "@var" => lex::Token::AtVar,
 
-        LowerName => lex::Token::LName(<ast::identifiers::LowerName>),
-        UpperName => lex::Token::UName(<ast::identifiers::UpperName>),
-        ContextName => lex::Token::CName(<ast::identifiers::ContextName>),
-        TypeVarName => lex::Token::TVName(<ast::identifiers::TypeVarName>),
+        LowerName => lex::Token::LName(<ast::LowerName>),
+        UpperName => lex::Token::UName(<ast::UpperName>),
+        ContextName => lex::Token::CName(<ast::ContextName>),
+        TypeVarName => lex::Token::TVName(<ast::TypeVarName>),
 
-        INTLIT => lex::Token::INTLIT(<i64>),
-        FLOATLIT => lex::Token::FLOATLIT(<String>),
-        STRINGLIT => lex::Token::STRINGLIT(<String>),
-        CHARLIT => lex::Token::CHARLIT(<char>),
+        IntLit => lex::Token::IntLit(<i64>),
+        FloatLit => lex::Token::FloatLit(<String>),
+        StringLit => lex::Token::StringLit(<String>),
+        CharLit => lex::Token::CharLit(<char>),
     }
 }
 

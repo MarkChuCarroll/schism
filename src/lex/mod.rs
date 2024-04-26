@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use line_col::LineColLookup;
-use std::{collections::HashMap, fmt::Display, str::CharIndices};
+use std::{collections::HashMap, str::CharIndices};
 use unicode_categories::UnicodeCategories;
 
 use crate::ast::*;
@@ -33,10 +33,6 @@ trait CharacterCategories {
 }
 
 impl CharacterCategories for char {
-    fn is_uname_start_char(&self) -> bool {
-        self.is_alphabetic() && self.is_uppercase()
-    }
-
     fn is_lname_start_char(&self) -> bool {
         return !self.is_syntax_char()
             && !self.is_whitespace()
@@ -60,9 +56,13 @@ impl CharacterCategories for char {
 
     fn is_syntax_char(&self) -> bool {
         match self {
-            '\'' | '.' | '"' | '$' | '@' | '|' | '(' | ')' | '{' | '}' | '[' | ']' => true,
+            '\'' | ':' |  '.' | ',' | '"' | '$' | '@' | '|' | '(' | ')' | '{' | '}' | '[' | ']' => true,
             _ => false,
         }
+    }
+
+    fn is_uname_start_char(&self) -> bool {
+        self.is_alphabetic() && self.is_uppercase()
     }
 }
 
@@ -84,40 +84,40 @@ impl<'input> Scanner<'input> {
             next: None,
             input,
             reserved: HashMap::from([
-                ("--".to_string(), Token::DASHDASH),
-                ("->".to_string(), Token::ARROW),
-                ("action".to_string(), Token::ACTION),
-                ("@action".to_string(), Token::ATACTION),
-                ("composes".to_string(), Token::COMPOSES),
-                ("cond".to_string(), Token::COND),
-                ("@cond".to_string(), Token::ATCOND),
-                ("do".to_string(), Token::DO),
-                ("end".to_string(), Token::END),
-                ("else".to_string(), Token::ELSE),
-                ("exit".to_string(), Token::EXIT),
-                ("for".to_string(), Token::FOR),
-                ("@for".to_string(), Token::ATFOR),
-                ("fun".to_string(), Token::FUNCTION),
-                ("@fun".to_string(), Token::ATFUNCTION),
-                ("init".to_string(), Token::INIT),
-                ("is".to_string(), Token::IS),
-                ("local".to_string(), Token::LOCAL),
-                ("loop".to_string(), Token::LOOP),
-                ("@loop".to_string(), Token::ATLOOP),
-                ("meth".to_string(), Token::METHOD),
-                ("@meth".to_string(), Token::ATMETHOD),
-                ("next".to_string(), Token::NEXT),
-                ("new".to_string(), Token::NEW),
-                ("obj".to_string(), Token::OBJ),
-                ("@obj".to_string(), Token::ATOBJ),
-                ("sig".to_string(), Token::SIG),
-                ("@sig".to_string(), Token::ATSIG),
-                ("slot".to_string(), Token::SLOT),
-                ("@slot".to_string(), Token::ATSLOT),
-                ("use".to_string(), Token::USE),
-                ("var".to_string(), Token::VAR),
-                ("@var".to_string(), Token::ATVAR),
-                ("!".to_string(), Token::BANG),
+                ("--".to_string(), Token::DashDash),
+                ("->".to_string(), Token::Arrow),
+                ("action".to_string(), Token::Action),
+                ("@action".to_string(), Token::AtAction),
+                ("composes".to_string(), Token::Composes),
+                ("cond".to_string(), Token::Cond),
+                ("@cond".to_string(), Token::AtCond),
+                ("do".to_string(), Token::Do),
+                ("end".to_string(), Token::End),
+                ("else".to_string(), Token::Else),
+                ("exit".to_string(), Token::Exit),
+                ("for".to_string(), Token::For),
+                ("@for".to_string(), Token::AtFor),
+                ("fun".to_string(), Token::Func),
+                ("@fun".to_string(), Token::AtFunc),
+                ("init".to_string(), Token::Init),
+                ("is".to_string(), Token::Is),
+                ("local".to_string(), Token::Local),
+                ("loop".to_string(), Token::Loop),
+                ("@loop".to_string(), Token::AtLoop),
+                ("meth".to_string(), Token::Method),
+                ("@meth".to_string(), Token::AtMethod),
+                ("next".to_string(), Token::Next),
+                ("new".to_string(), Token::New),
+                ("obj".to_string(), Token::Obj),
+                ("@obj".to_string(), Token::AtObj),
+                ("sig".to_string(), Token::Sig),
+                ("@sig".to_string(), Token::AtSig),
+                ("slot".to_string(), Token::Slot),
+                ("@slot".to_string(), Token::AtSlot),
+                ("use".to_string(), Token::Use),
+                ("var".to_string(), Token::Var),
+                ("@var".to_string(), Token::AtVar),
+                ("!".to_string(), Token::Bang),
             ]),
         };
         scanner.advance();
@@ -170,11 +170,11 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    fn validate_typevar(&self, token_str: &str, start: usize, end: usize) -> Option<ScannerResult> {
+    fn validate_type_var(&self, token_str: &str, start: usize, end: usize) -> Option<ScannerResult> {
         if token_str.len() < 2 {
             Some(Err(CompilationError::LexicalError(
                 self.line_and_col(start),
-                "Type var must have at least one letter after its sigil".to_string(),
+                "Type var must have at least one letter after its sigill".to_string(),
             )))
         } else {
             self.good_token(
@@ -185,7 +185,7 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    fn validate_contextvar(
+    fn validate_context_var(
         &self,
         token_str: &str,
         start: usize,
@@ -194,7 +194,7 @@ impl<'input> Scanner<'input> {
         if token_str.len() < 2 {
             Some(Err(CompilationError::LexicalError(
                 self.line_and_col(start),
-                "Context var must have at least one letter after its sigil".to_string(),
+                "Context var must have at least one letter after its sigill".to_string(),
             )))
         } else {
             self.good_token(Token::CName(ContextName(token_str.to_string())), start, end)
@@ -246,54 +246,54 @@ impl<'input> Scanner<'input> {
                 // Unambiguous Single character tokens
                 Some((pos, '(')) => {
                     self.advance();
-                    return self.good_token(Token::LPAREN, pos, pos + 1);
+                    return self.good_token(Token::LParen, pos, pos + 1);
                 }
                 Some((pos, ')')) => {
                     self.advance();
-                    return self.good_token(Token::RPAREN, pos, pos + 1);
+                    return self.good_token(Token::RParen, pos, pos + 1);
                 }
 
                 Some((pos, '{')) => {
                     self.advance();
-                    return self.good_token(Token::LCURLY, pos, pos + 1);
+                    return self.good_token(Token::LCurly, pos, pos + 1);
                 }
                 Some((pos, '}')) => {
                     self.advance();
-                    return self.good_token(Token::RCURLY, pos, pos + 1);
+                    return self.good_token(Token::RCurly, pos, pos + 1);
                 }
                 Some((pos, ']')) => {
                     self.advance();
-                    return self.good_token(Token::RBRACK, pos, pos + 1);
+                    return self.good_token(Token::RBracket, pos, pos + 1);
                 }
                 Some((pos, '.')) => {
                     self.advance();
-                    return self.good_token(Token::DOT, pos, pos + 1);
+                    return self.good_token(Token::Dot, pos, pos + 1);
                 }
                 Some((pos, ',')) => {
                     self.advance();
-                    return self.good_token(Token::COMMA, pos, pos + 1);
+                    return self.good_token(Token::Comma, pos, pos + 1);
                 }
                 // Then look at possible one-character tokens that could
                 // also be the first character of a multichar token.
                 Some((pos, '[')) => {
                     self.advance();
-                    match self.current {
+                    return match self.current {
                         Some((_, '|')) => {
                             self.advance();
-                            return self.good_token(Token::LBRACKBAR, pos, pos + 2);
+                            self.good_token(Token::LBracketBar, pos, pos + 2)
                         }
-                        _ => return self.good_token(Token::LBRACK, pos, pos + 1),
+                        _ => self.good_token(Token::LBracket, pos, pos + 1),
                     }
                 }
-                Some((pos, '|')) => match self.next {
+                Some((pos, '|')) => return match self.next {
                     Some((_, ']')) => {
                         self.advance();
                         self.advance();
-                        return self.good_token(Token::RBRACKBAR, pos, pos + 2);
+                        self.good_token(Token::RBracketBar, pos, pos + 2)
                     }
-                    _ => return self.scan_ident_or_keyword(pos),
+                    _ => self.scan_ident_or_keyword(pos),
                 },
-                // Multicharacter tokens/elements with a distinguishing leader
+                // Multi-character tokens/elements with a distinguishing leader
                 Some((start, '/')) => match self.next {
                     Some((_, '/')) => {
                         self.skip_to_end_of_line();
@@ -309,32 +309,32 @@ impl<'input> Scanner<'input> {
                     _ => return self.scan_ident_or_keyword(start),
                 },
                 Some((p, '@')) => return self.scan_at_ident(p),
-                Some((p, '$')) => return self.scan_contextvar(p),
-                Some((p, '`')) => return self.scan_typevar(p),
+                Some((p, '$')) => return self.scan_context_var(p),
+                Some((p, '`')) => return self.scan_type_var(p),
                 Some((pos, c)) if c.is_number_decimal_digit() => return self.scan_number(pos),
-                Some((pos, '-')) => match self.next {
-                    Some((_, c)) if c.is_number_decimal_digit() => return self.scan_number(pos),
-                    _ => return self.scan_ident_or_keyword(pos),
+                Some((pos, '-')) => return match self.next {
+                    Some((_, c)) if c.is_number_decimal_digit() => self.scan_number(pos),
+                    _ => self.scan_ident_or_keyword(pos),
                 },
                 Some((pos, '"')) => return self.scan_string(pos),
                 Some((pos, '\'')) => return self.scan_char_literal(pos),
 
                 Some((pos, ':')) => {
                     self.advance();
-                    return self.good_token(Token::COLON, pos, pos + 1);
+                    return self.good_token(Token::Colon, pos, pos + 1);
                 }
                 Some((pos, c)) => {
-                    if c.is_lname_start_char() {
-                        return self.scan_ident_or_keyword(pos);
+                    return if c.is_lname_start_char() {
+                        self.scan_ident_or_keyword(pos)
                     } else if c.is_uppercase() {
-                        return self.scan_upper_ident(pos);
+                        self.scan_upper_ident(pos)
                     } else if c.is_number_decimal_digit() {
-                        return self.scan_number(pos);
+                        self.scan_number(pos)
                     } else {
-                        return Some(Err(CompilationError::LexicalError(
+                        Some(Err(CompilationError::LexicalError(
                             self.line_and_col(pos),
                             "Invalid char".to_string(),
-                        )));
+                        )))
                     }
                 }
                 None => return None,
@@ -386,14 +386,14 @@ impl<'input> Scanner<'input> {
                     return self.scan_float(start);
                 } else {
                     return self.good_token(
-                        Token::INTLIT(self.input[start..i].parse::<i64>().unwrap()),
+                        Token::IntLit(self.input[start..i].parse::<i64>().unwrap()),
                         start,
                         i,
                     );
                 }
             } else {
                 return self.good_token(
-                    Token::INTLIT(self.input[start..(start + count)].parse::<i64>().unwrap()),
+                    Token::IntLit(self.input[start..(start + count)].parse::<i64>().unwrap()),
                     start,
                     start + count,
                 );
@@ -415,7 +415,7 @@ impl<'input> Scanner<'input> {
                     return self.scan_float_exponent(start);
                 } else {
                     return self.good_token(
-                        Token::FLOATLIT(self.input[start..i].to_string()),
+                        Token::FloatLit(self.input[start..i].to_string()),
                         start,
                         i,
                     );
@@ -440,14 +440,14 @@ impl<'input> Scanner<'input> {
                     continue;
                 } else {
                     return self.good_token(
-                        Token::FLOATLIT(self.input[start..i].to_string()),
+                        Token::FloatLit(self.input[start..i].to_string()),
                         start,
                         i,
                     );
                 }
             } else {
                 return self.good_token(
-                    Token::FLOATLIT(self.input[start..].to_string()),
+                    Token::FloatLit(self.input[start..].to_string()),
                     start,
                     self.input.len(),
                 );
@@ -464,7 +464,7 @@ impl<'input> Scanner<'input> {
                     '"' => {
                         self.advance();
                         return self.good_token(
-                            Token::STRINGLIT(self.input[start + 1..i].to_string()),
+                            Token::StringLit(self.input[start + 1..i].to_string()),
                             start,
                             i + 1,
                         );
@@ -483,38 +483,38 @@ impl<'input> Scanner<'input> {
     }
 
     fn scan_string_escape(&mut self) -> Result<char, CompilationError> {
-        if let Some((pos, c)) = self.current {
+        return if let Some((pos, c)) = self.current {
             match c {
-                '\\' => return Ok('\\'),
-                'n' => return Ok('\n'),
-                'r' => return Ok('\r'),
-                '0' => return Ok('\0'),
-                't' => return Ok('\t'),
-                '"' => return Ok('"'),
+                '\\' => Ok('\\'),
+                'n' => Ok('\n'),
+                'r' => Ok('\r'),
+                '0' => Ok('\0'),
+                't' => Ok('\t'),
+                '"' => Ok('"'),
                 'x' => {
                     self.advance();
                     // scan two hex digits
                     let digits = self.swallow(2, 2, |q: char| q.is_ascii_hexdigit())?;
-                    return Ok(char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap());
+                    Ok(char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap())
                 }
                 'u' => {
                     self.advance();
                     self.swallow_char('{')?;
                     let digits = self.swallow(1, 6, |c| c.is_ascii_hexdigit())?;
                     self.swallow_char('}')?;
-                    return Ok(char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap());
+                    Ok(char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap())
                 }
                 c => {
                     let pos = self.line_and_col(pos);
-                    return Err(CompilationError::InvalidEscape(pos, c.to_string()));
+                    Err(CompilationError::InvalidEscape(pos, c.to_string()))
                 }
             }
         } else {
             let pos = self.line_and_col(self.input.len());
-            return Err(CompilationError::InvalidEscape(
+            Err(CompilationError::InvalidEscape(
                 pos,
                 "unterminated escape sequence".to_string(),
-            ));
+            ))
         }
     }
 
@@ -539,25 +539,25 @@ impl<'input> Scanner<'input> {
                     result.push(c);
                     self.advance()
                 } else {
-                    if i >= min {
-                        return Ok(result);
+                    return if i >= min {
+                        Ok(result)
                     } else {
                         let pos = self.line_and_col(pos);
-                        return Err(CompilationError::LexicalError(
+                        Err(CompilationError::LexicalError(
                             pos,
                             format!("Invalid token: Expected at least {} chars", min).to_string(),
-                        ));
+                        ))
                     }
                 }
             } else {
-                if i >= min {
-                    return Ok(result);
+                return if i >= min {
+                    Ok(result)
                 } else {
                     let pos = self.line_and_col(self.input.len());
-                    return Err(CompilationError::LexicalError(
+                    Err(CompilationError::LexicalError(
                         pos,
                         format!("Expected at least {} characters", min).to_string(),
-                    ));
+                    ))
                 }
             }
         }
@@ -567,36 +567,36 @@ impl<'input> Scanner<'input> {
     /// Similar to [swallow], but it only consumes a single, specific
     /// character.
     fn swallow_char(&mut self, c: char) -> Result<(), CompilationError> {
-        if let Some((pos, q)) = self.current {
+        return if let Some((pos, q)) = self.current {
             if q == c {
                 self.advance();
-                return Ok(());
+                Ok(())
             } else {
                 let loc = self.line_and_col(pos);
-                return Err(CompilationError::LexicalError(
+                Err(CompilationError::LexicalError(
                     loc,
                     format!("Expected '{}', but saw '{}'", c, q).to_string(),
-                ));
+                ))
             }
         } else {
             let loc = self.line_and_col(self.input.len());
-            return Err(CompilationError::LexicalError(
+            Err(CompilationError::LexicalError(
                 loc,
-                format!("Expected character, but saw EOF").to_string(),
-            ));
+                "Expected character, but saw EOF".to_string(),
+            ))
         }
     }
 
     fn scan_char_escape(&mut self, start: usize) -> ScannerResult {
         let c = self.scan_string_escape()?;
-        match self.current {
-            Some((end, '\'')) => return self.good_token(Token::CHARLIT(c), start, end).unwrap(),
+        return match self.current {
+            Some((end, '\'')) => self.good_token(Token::CharLit(c), start, end).unwrap(),
             _ => {
                 let loc = self.line_and_col(start);
-                return Err(CompilationError::LexicalError(
+                Err(CompilationError::LexicalError(
                     loc,
                     "Unterminated char literal".to_string(),
-                ));
+                ))
             }
         }
     }
@@ -605,39 +605,39 @@ impl<'input> Scanner<'input> {
         self.advance();
         // After the "'", we should see either a single character,
         // or an escape code, followed by a single quote.
-        if let Some((_, c)) = self.current {
+        return if let Some((_, c)) = self.current {
             match c {
-                '\\' => return Some(self.scan_char_escape(start)),
+                '\\' => Some(self.scan_char_escape(start)),
                 _ => {
                     self.advance();
                     match self.current {
                         Some((end, '\'')) => {
                             self.advance();
-                            return self.good_token(Token::CHARLIT(c), start, end);
+                            self.good_token(Token::CharLit(c), start, end)
                         }
                         Some((i, _)) => {
                             let loc = self.line_and_col(i);
-                            return Some(Err(CompilationError::LexicalError(
+                            Some(Err(CompilationError::LexicalError(
                                 loc,
                                 "Invalid character literal".to_string(),
-                            )));
+                            )))
                         }
                         _ => {
                             let loc = self.line_and_col(self.input.len());
-                            return Some(Err(CompilationError::LexicalError(
+                            Some(Err(CompilationError::LexicalError(
                                 loc,
                                 "Invalid character literal".to_string(),
-                            )));
+                            )))
                         }
                     }
                 }
             }
         } else {
             let loc = self.line_and_col(start);
-            return Some(Err(CompilationError::LexicalError(
+            Some(Err(CompilationError::LexicalError(
                 loc,
                 "Invalid character literal".to_string(),
-            )));
+            )))
         }
     }
 
@@ -683,7 +683,7 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    fn scan_typevar(&mut self, start: usize) -> Option<ScannerResult> {
+    fn scan_type_var(&mut self, start: usize) -> Option<ScannerResult> {
         self.advance();
         loop {
             match self.current {
@@ -692,16 +692,16 @@ impl<'input> Scanner<'input> {
                     continue;
                 }
                 Some((end, _)) => {
-                    return self.validate_typevar(&self.input[start..end], start, end)
+                    return self.validate_type_var(&self.input[start..end], start, end)
                 }
                 None => {
-                    return self.validate_typevar(&self.input[start..], start, self.input.len())
+                    return self.validate_type_var(&self.input[start..], start, self.input.len())
                 }
             }
         }
     }
 
-    fn scan_contextvar(&mut self, start: usize) -> Option<ScannerResult> {
+    fn scan_context_var(&mut self, start: usize) -> Option<ScannerResult> {
         self.advance();
         loop {
             match self.current {
@@ -710,10 +710,10 @@ impl<'input> Scanner<'input> {
                     continue;
                 }
                 Some((pos, _)) => {
-                    return self.validate_contextvar(&self.input[start..], start, pos)
+                    return self.validate_context_var(&self.input[start..pos], start, pos)
                 }
                 None => {
-                    return self.validate_contextvar(&self.input[start..], start, self.input.len())
+                    return self.validate_context_var(&self.input[start..], start, self.input.len())
                 }
             }
         }

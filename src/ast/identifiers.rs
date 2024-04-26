@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct LowerName(pub String); // lowercase identifier - anything starting with a lowercase
                                   // letter, or a symbol other than ' or _
 
 impl Display for LowerName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -28,16 +28,16 @@ pub struct UpperName(pub String); // uppercase identifier - anything starting wi
                                   // an uppercase letter.
 
 impl Display for UpperName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct TypeVarName(pub String); // typevar - anything starting with a '.
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct TypeVarName(pub String); // type_var - anything starting with a '.
 
 impl Display for TypeVarName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -46,12 +46,24 @@ impl Display for TypeVarName {
 pub struct ContextName(pub String); // context var - anything starting with a $.
 
 impl Display for ContextName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-pub type ModulePath = Vec<LowerName>;
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub struct ModulePath {
+    pub segments: Vec<LowerName>
+}
+
+impl Display for ModulePath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for seg in &self.segments {
+            write!(f, ".{}", seg.to_string())?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Ident<NameKind: Display> {
@@ -60,12 +72,12 @@ pub enum Ident<NameKind: Display> {
 }
 
 impl<NameKind: Display> Display for Ident<NameKind> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Scoped { path, name } => write!(
                 f,
                 "{}.{}",
-                path.iter()
+                path.segments.iter()
                     .map(|it| it.to_string())
                     .collect::<Vec<String>>()
                     .join("::"),
