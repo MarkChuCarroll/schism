@@ -1,131 +1,28 @@
-use crate::{ast, errors::CompilationError};
+// Copyright 2024 Mark C. Chu-Carroll
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use line_col::LineColLookup;
 use std::{collections::HashMap, fmt::Display, str::CharIndices};
 use unicode_categories::UnicodeCategories;
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum Token {
-    SLASH,
-    COLON,
-    COMMA,
-    DASHDASH,
-    ARROW,
-    BANG,
-    DOT,
+use crate::ast::*;
+use crate::errors::CompilationError;
 
-    LBRACK,
-    RBRACK,
-    LBRACKBAR,
-    RBRACKBAR,
-    LPAREN,
-    RPAREN,
-    LCURLY,
-    RCURLY,
-
-    ACTION,
-    ATACTION,
-    COMPOSES,
-    COND,
-    ATCOND,
-    DO,
-    END,
-    ELSE,
-    EXIT,
-    FOR,
-    ATFOR,
-    FUNCTION,
-    ATFUNCTION,
-    INIT,
-    IS,
-    LOCAL,
-    LOOP,
-    ATLOOP,
-    METHOD,
-    ATMETHOD,
-    NEXT,
-    NEW,
-    OBJ,
-    ATOBJ,
-    SIG,
-    ATSIG,
-    SLOT,
-    ATSLOT,
-    USE,
-    VAR,
-    ATVAR,
-
-    LName(ast::LowerName),
-    UName(ast::UpperName),
-    CName(ast::ContextName),
-    TVName(ast::TypeVarName),
-    INTLIT(i64),
-    FLOATLIT(String),
-    STRINGLIT(String),
-    CHARLIT(char),
-}
-
-impl Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Token::SLASH => write!(f, "/"),
-            Token::COLON => write!(f, ":"),
-            Token::COMMA => write!(f, ","),
-            Token::DASHDASH => write!(f, "--"),
-            Token::ARROW => write!(f, "->"),
-            Token::BANG => write!(f, "!"),
-            Token::DOT => write!(f, "."),
-            Token::LBRACK => write!(f, "["),
-            Token::RBRACK => write!(f, "]"),
-            Token::LBRACKBAR => write!(f, "[|"),
-            Token::RBRACKBAR => write!(f, "|]"),
-            Token::LPAREN => write!(f, "("),
-            Token::RPAREN => write!(f, ")"),
-            Token::LCURLY => write!(f, "{{"),
-            Token::RCURLY => write!(f, "}}"),
-            Token::ACTION => write!(f, "action"),
-            Token::ATACTION => write!(f, "@action"),
-            Token::COMPOSES => write!(f, "composes"),
-            Token::COND => write!(f, "cond"),
-            Token::ATCOND => write!(f, "@cond"),
-            Token::DO => write!(f, "do"),
-            Token::END => write!(f, "end"),
-            Token::ELSE => write!(f, "else"),
-            Token::EXIT => write!(f, "exit"),
-            Token::FOR => write!(f, "for"),
-            Token::ATFOR => write!(f, "atfor"),
-            Token::FUNCTION => write!(f, "function"),
-            Token::ATFUNCTION => write!(f, "@function"),
-            Token::INIT => write!(f, "init"),
-            Token::IS => write!(f, "is"),
-            Token::LOCAL => write!(f, "local"),
-            Token::LOOP => write!(f, "loop"),
-            Token::ATLOOP => write!(f, "@loop"),
-            Token::METHOD => write!(f, "meth"),
-            Token::ATMETHOD => write!(f, "@meth"),
-            Token::NEXT => write!(f, "next"),
-            Token::NEW => write!(f, "new"),
-            Token::OBJ => write!(f, "obj"),
-            Token::ATOBJ => write!(f, "@obj"),
-            Token::SIG => write!(f, "sig"),
-            Token::ATSIG => write!(f, "@sig"),
-            Token::SLOT => write!(f, "slot"),
-            Token::ATSLOT => write!(f, "@slot"),
-            Token::USE => write!(f, "use"),
-            Token::VAR => write!(f, "var"),
-            Token::ATVAR => write!(f, "@var"),
-            Token::LName(l) => write!(f, "LName({})", l),
-            Token::UName(u) => write!(f, "UName({})", u),
-            Token::CName(c) => write!(f, "CName({})", c),
-            Token::TVName(t) => write!(f, "TVName({})", t),
-            Token::INTLIT(i) => write!(f, "Int({})", i),
-            Token::FLOATLIT(fl) => write!(f, "Float({})", fl),
-            Token::STRINGLIT(s) => write!(f, "String({})", s),
-            Token::CHARLIT(c) => write!(f, "Char({})", c),
-        }
-    }
-}
-
+mod location;
+mod token;
+pub use location::Location;
+pub use token::Token;
 /// An extension trait providing tests of a couple of
 /// character categories that are useful for the parser.
 trait CharacterCategories {
@@ -143,11 +40,11 @@ impl CharacterCategories for char {
     fn is_lname_start_char(&self) -> bool {
         return !self.is_syntax_char()
             && !self.is_whitespace()
-            && (self.is_alphabetic() && self.is_lowercase())
-            || self.is_symbol()
-            || self.is_punctuation_connector()
-            || self.is_punctuation_dash()
-            || self.is_punctuation_other();
+            && ((self.is_alphabetic() && self.is_lowercase())
+                || self.is_symbol()
+                || self.is_punctuation_connector()
+                || self.is_punctuation_dash()
+                || self.is_punctuation_other());
     }
 
     fn is_id_char(&self) -> bool {
@@ -163,7 +60,7 @@ impl CharacterCategories for char {
 
     fn is_syntax_char(&self) -> bool {
         match self {
-            '\'' | '.' | '"' | '$' | '@' => true,
+            '\'' | '.' | '"' | '$' | '@' | '|' | '(' | ')' | '{' | '}' | '[' | ']' => true,
             _ => false,
         }
     }
@@ -220,6 +117,7 @@ impl<'input> Scanner<'input> {
                 ("use".to_string(), Token::USE),
                 ("var".to_string(), Token::VAR),
                 ("@var".to_string(), Token::ATVAR),
+                ("!".to_string(), Token::BANG),
             ]),
         };
         scanner.advance();
@@ -253,28 +151,7 @@ impl<'input> Scanner<'input> {
     ) -> Option<ScannerResult> {
         match self.reserved.get(&token_str) {
             Some(t) => self.good_token(t.clone(), start, end),
-            None => self.good_token(Token::LName(ast::LowerName(token_str)), start, end),
-        }
-    }
-
-    fn scan_ident_or_keyword(&mut self, start: usize) -> Option<ScannerResult> {
-        loop {
-            match self.current {
-                Some((_, c)) if c.is_id_char() => {
-                    self.advance();
-                    continue;
-                }
-                Some((pos, _)) => {
-                    return self.ident_or_keyword(self.input[start..pos].to_string(), start, pos)
-                }
-                None => {
-                    return self.ident_or_keyword(
-                        self.input[start..].to_string(),
-                        start,
-                        self.input.len(),
-                    )
-                }
-            }
+            None => self.good_token(Token::LName(LowerName(token_str)), start, end),
         }
     }
 
@@ -293,27 +170,6 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    fn scan_at_ident(
-        &mut self,
-        start: usize,
-    ) -> Option<Result<(Location, Token, Location), CompilationError>> {
-        self.advance();
-        loop {
-            match self.current {
-                Some((_, c)) if c.is_alphabetic() => {
-                    self.advance();
-                    continue;
-                }
-                Some((pos, _)) => {
-                    return self.validate_at_keyword(&self.input[start..pos], start, pos)
-                }
-                None => {
-                    return self.validate_at_keyword(&self.input[start..], start, self.input.len())
-                }
-            }
-        }
-    }
-
     fn validate_typevar(&self, token_str: &str, start: usize, end: usize) -> Option<ScannerResult> {
         if token_str.len() < 2 {
             Some(Err(CompilationError::LexicalError(
@@ -322,26 +178,10 @@ impl<'input> Scanner<'input> {
             )))
         } else {
             self.good_token(
-                Token::CName(ast::ContextName(token_str.to_string())),
+                Token::TVName(TypeVarName(token_str.to_string())),
                 start,
                 end,
             )
-        }
-    }
-
-    fn scan_typevar(&mut self, start: usize) -> Option<ScannerResult> {
-        self.advance();
-        loop {
-            match self.current {
-                Some((_, c)) if c.is_alphabetic() => {
-                    self.advance();
-                    continue;
-                }
-                Some((pos, _)) => return self.validate_typevar(&self.input[start..], start, pos),
-                None => {
-                    return self.validate_typevar(&self.input[start..], start, self.input.len())
-                }
-            }
         }
     }
 
@@ -357,87 +197,8 @@ impl<'input> Scanner<'input> {
                 "Context var must have at least one letter after its sigil".to_string(),
             )))
         } else {
-            self.good_token(
-                Token::CName(ast::ContextName(token_str.to_string())),
-                start,
-                end,
-            )
+            self.good_token(Token::CName(ContextName(token_str.to_string())), start, end)
         }
-    }
-
-    fn scan_contextvar(&mut self, start: usize) -> Option<ScannerResult> {
-        self.advance();
-        loop {
-            match self.current {
-                Some((_, c)) if c.is_id_char() => {
-                    self.advance();
-                    continue;
-                }
-                Some((pos, _)) => {
-                    return self.validate_contextvar(&self.input[start..], start, pos)
-                }
-                None => {
-                    return self.validate_contextvar(&self.input[start..], start, self.input.len())
-                }
-            }
-        }
-    }
-
-    fn scan_upper_ident(&mut self, start: usize) -> Option<ScannerResult> {
-        loop {
-            self.advance();
-            match self.current {
-                Some((_, c)) if c.is_id_char() => continue,
-                Some((end, _)) => {
-                    return self.good_token(
-                        Token::UName(ast::UpperName(self.input[start..end].to_string())),
-                        start,
-                        end,
-                    )
-                }
-                None => {
-                    return self.good_token(
-                        Token::UName(ast::UpperName(self.input[start..].to_string())),
-                        start,
-                        self.input.len(),
-                    )
-                }
-            }
-        }
-    }
-
-    fn skip_to_end_of_line(&mut self) {
-        loop {
-            self.advance();
-            match self.current {
-                Some((_, '\n')) => {
-                    self.advance();
-                    return;
-                }
-                Some(_) => (),
-                None => return,
-            }
-        }
-    }
-}
-
-#[derive(Eq, PartialEq, Clone, Copy, Debug)]
-pub struct Location {
-    pub line: usize,
-    pub column: usize,
-}
-impl Default for Location {
-    fn default() -> Self {
-        Self {
-            line: Default::default(),
-            column: Default::default(),
-        }
-    }
-}
-
-impl Display for Location {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "(line {}, col {})", self.line, self.column)
     }
 }
 
@@ -549,7 +310,7 @@ impl<'input> Scanner<'input> {
                 },
                 Some((p, '@')) => return self.scan_at_ident(p),
                 Some((p, '$')) => return self.scan_contextvar(p),
-                Some((p, '_')) => return self.scan_typevar(p),
+                Some((p, '`')) => return self.scan_typevar(p),
                 Some((pos, c)) if c.is_number_decimal_digit() => return self.scan_number(pos),
                 Some((pos, '-')) => match self.next {
                     Some((_, c)) if c.is_number_decimal_digit() => return self.scan_number(pos),
@@ -877,6 +638,121 @@ impl<'input> Scanner<'input> {
                 loc,
                 "Invalid character literal".to_string(),
             )));
+        }
+    }
+
+    fn scan_ident_or_keyword(&mut self, start: usize) -> Option<ScannerResult> {
+        loop {
+            match self.current {
+                Some((_, c)) if c.is_id_char() => {
+                    self.advance();
+                    continue;
+                }
+                Some((pos, _)) => {
+                    return self.ident_or_keyword(self.input[start..pos].to_string(), start, pos)
+                }
+                None => {
+                    return self.ident_or_keyword(
+                        self.input[start..].to_string(),
+                        start,
+                        self.input.len(),
+                    )
+                }
+            }
+        }
+    }
+
+    fn scan_at_ident(
+        &mut self,
+        start: usize,
+    ) -> Option<Result<(Location, Token, Location), CompilationError>> {
+        self.advance();
+        loop {
+            match self.current {
+                Some((_, c)) if c.is_alphabetic() => {
+                    self.advance();
+                    continue;
+                }
+                Some((pos, _)) => {
+                    return self.validate_at_keyword(&self.input[start..pos], start, pos)
+                }
+                None => {
+                    return self.validate_at_keyword(&self.input[start..], start, self.input.len())
+                }
+            }
+        }
+    }
+
+    fn scan_typevar(&mut self, start: usize) -> Option<ScannerResult> {
+        self.advance();
+        loop {
+            match self.current {
+                Some((_, c)) if c.is_alphabetic() => {
+                    self.advance();
+                    continue;
+                }
+                Some((end, _)) => {
+                    return self.validate_typevar(&self.input[start..end], start, end)
+                }
+                None => {
+                    return self.validate_typevar(&self.input[start..], start, self.input.len())
+                }
+            }
+        }
+    }
+
+    fn scan_contextvar(&mut self, start: usize) -> Option<ScannerResult> {
+        self.advance();
+        loop {
+            match self.current {
+                Some((_, c)) if c.is_id_char() => {
+                    self.advance();
+                    continue;
+                }
+                Some((pos, _)) => {
+                    return self.validate_contextvar(&self.input[start..], start, pos)
+                }
+                None => {
+                    return self.validate_contextvar(&self.input[start..], start, self.input.len())
+                }
+            }
+        }
+    }
+
+    fn scan_upper_ident(&mut self, start: usize) -> Option<ScannerResult> {
+        loop {
+            self.advance();
+            match self.current {
+                Some((_, c)) if c.is_id_char() => continue,
+                Some((end, _)) => {
+                    return self.good_token(
+                        Token::UName(UpperName(self.input[start..end].to_string())),
+                        start,
+                        end,
+                    )
+                }
+                None => {
+                    return self.good_token(
+                        Token::UName(UpperName(self.input[start..].to_string())),
+                        start,
+                        self.input.len(),
+                    )
+                }
+            }
+        }
+    }
+
+    fn skip_to_end_of_line(&mut self) {
+        loop {
+            self.advance();
+            match self.current {
+                Some((_, '\n')) => {
+                    self.advance();
+                    return;
+                }
+                Some(_) => (),
+                None => return,
+            }
         }
     }
 }

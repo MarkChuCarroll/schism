@@ -12,19 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[macro_use]
-extern crate lalrpop_util;
+use std::fmt::Display;
 
-lalrpop_mod!(parser, "/parser/schism.rs");
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
+pub struct Location {
+    pub line: usize,
+    pub column: usize,
+}
 
-mod ast;
-mod errors;
-mod lex;
-mod twist;
+impl Default for Location {
+    fn default() -> Self {
+        Self {
+            line: Default::default(),
+            column: Default::default(),
+        }
+    }
+}
 
-#[cfg(test)]
-mod tests;
-
-fn main() {
-    println!("Hello, world!");
+impl Display for Location {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(line {}, col {})", self.line, self.column)
+    }
 }

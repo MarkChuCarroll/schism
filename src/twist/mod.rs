@@ -1,3 +1,17 @@
+// Copyright 2024 Mark C. Chu-Carroll
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 pub trait Twistable {
     fn twist(&self) -> Twist;
 }
@@ -13,11 +27,11 @@ pub enum Twist {
 
 impl Twist {
     pub fn obj(name: &str, children: Vec<Twist>) -> Self {
-        return Self::ObjNode(name.to_string(), children);
+        Self::ObjNode(name.to_string(), children)
     }
 
     pub fn arr(name: &str, children: Vec<Twist>) -> Self {
-        return Self::ArrayNode(name.to_string(), children);
+        Self::ArrayNode(name.to_string(), children)
     }
 
     pub fn twist_arr(name: &str, children: &Vec<impl Twistable>) -> Self {
@@ -32,7 +46,7 @@ impl Twist {
     }
 
     pub fn attr(name: &str, value: String) -> Self {
-        return Self::AttrNode(name.to_string(), value);
+        Self::AttrNode(name.to_string(), value)
     }
 
     pub fn opt_val(name: &str, value: Option<Twist>) -> Self {
@@ -66,16 +80,22 @@ impl Twist {
                 rendered.push_str(name);
                 rendered.push_str(":\n");
                 for c in children {
-                    c.render(rendered, indent + 1)
+                    let mut cr = String::new();
+                    c.render(&mut cr, indent + 1);
+                    if cr.chars().any(|ch| !ch.is_whitespace()) {
+                        rendered.push_str(&cr)
+                    }
                 }
             }
             Self::ArrayNode(name, children) => {
-                Self::indent(rendered, indent);
-                rendered.push_str("arr ");
-                rendered.push_str(name);
-                rendered.push_str(":\n");
-                for c in children {
-                    c.render(rendered, indent + 1);
+                if children.len() > 0 {
+                    Self::indent(rendered, indent);
+                    rendered.push_str("arr ");
+                    rendered.push_str(name);
+                    rendered.push_str(":\n");
+                    for c in children {
+                        c.render(rendered, indent + 1);
+                    }
                 }
             }
             Self::AttrNode(name, value) => {
@@ -107,47 +127,67 @@ impl Twist {
     pub fn to_string(&self) -> String {
         let mut s = String::new();
         self.render(&mut s, 1);
-        return s;
+        s
     }
 
-    pub fn code(&self, rendered: &mut String) {
+    pub fn to_code(&self) -> String {
+        let mut s = String::new();
+        self.code(&mut s, 1);
+        s
+    }
+
+    pub fn code(&self, rendered: &mut String, ind: usize) {
         match self {
             Self::ObjNode(name, children) => {
+                Self::indent(rendered, ind);
                 rendered.push_str("Twist::obj(\"");
                 rendered.push_str(name);
-                rendered.push_str("\", vec![");
+                rendered.push_str("\",\n");
+                Self::indent(rendered, ind + 1);
+                rendered.push_str("vec![\n");
                 rendered.push_str(
                     &children
                         .iter()
                         .map(|c| {
                             let mut cstr = String::new();
-                            c.code(&mut cstr);
+                            c.code(&mut cstr, ind + 2);
                             cstr
                         })
+                        .filter(|c| c.chars().any(|c| !c.is_whitespace()))
                         .collect::<Vec<String>>()
-                        .join(", "),
+                        .join(",\n"),
                 );
+                rendered.push_str("\n");
+                Self::indent(rendered, ind + 1);
                 rendered.push_str("])");
             }
             Self::ArrayNode(name, children) => {
-                rendered.push_str("Twist::arr(\"");
-                rendered.push_str(name);
-                rendered.push_str("\", vec![");
-                rendered.push_str(
-                    &children
-                        .iter()
-                        .map(|c| {
-                            let mut cstr = String::new();
-                            c.code(&mut cstr);
-                            cstr
-                        })
-                        .collect::<Vec<String>>()
-                        .join(", "),
-                );
-
-                rendered.push_str("])");
+                if children.len() > 0 {
+                    Self::indent(rendered, ind);
+                    rendered.push_str("Twist::arr(\"");
+                    rendered.push_str(name);
+                    rendered.push_str("\",\n");
+                    Self::indent(rendered, ind + 1);
+                    rendered.push_str("vec![\n");
+                    rendered.push_str(
+                        &children
+                            .iter()
+                            .map(|c| {
+                                let mut cstr = String::new();
+                                c.code(&mut cstr, ind + 2);
+                                cstr
+                            })
+                            .filter(|l| l.len() > 0)
+                            .collect::<Vec<String>>()
+                            .join(",\n"),
+                    );
+                    rendered.push_str("\n");
+                    Self::indent(rendered, ind + 1);
+                    rendered.push_str("])");
+                }
             }
             Self::AttrNode(name, value) => {
+                Self::indent(rendered, ind);
                 rendered.push_str("Twist::attr(\"");
                 rendered.push_str(name);
                 rendered.push_str("\", \"");
@@ -156,18 +196,22 @@ impl Twist {
             }
             Self::ValueNode(name, value) => match value {
                 Some(v) => {
+                    Self::indent(rendered, ind);
                     rendered.push_str("Twist::val(\"");
                     rendered.push_str(name);
-                    rendered.push_str("\", ");
-                    v.code(rendered);
+                    rendered.push_str("\",\n");
+                    v.code(rendered, ind + 1);
+                    rendered.push_str("\n");
+                    Self::indent(rendered, ind);
                     rendered.push_str(")");
                 }
                 None => (),
             },
             Self::LeafNode(name) => {
+                Self::indent(rendered, ind);
                 rendered.push_str("Twist::leaf(\"");
                 rendered.push_str(name);
-                rendered.push_str("\");n")
+                rendered.push_str("\")")
             }
         }
     }
