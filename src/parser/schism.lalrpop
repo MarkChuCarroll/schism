@@ -20,14 +20,15 @@ use lalrpop_util::ParseError;
 grammar;
 
 pub Sect: ast::Sect = {
-    <uses:UseDecl*>  <defs:Definition+> =>
+    <uses:UseDecl*>  <defs:Definition+> => {
          ast::Sect{uses, defs}
+    }
 }
 
 #[inline]
 Path: ast::ModulePath = {
     <segments:("." <LowerName>)+>
-        => ast::ModulePath{segments}
+        => ast::ModulePath::new(segments)
 }
 
 UseDecl: ast::UseDecl = {
@@ -407,10 +408,10 @@ extern {
         "var" => lex::Token::Var,
         "@var" => lex::Token::AtVar,
 
-        LowerName => lex::Token::LName(<ast::LowerName>),
-        UpperName => lex::Token::UName(<ast::UpperName>),
-        ContextName => lex::Token::CName(<ast::ContextName>),
-        TypeVarName => lex::Token::TVName(<ast::TypeVarName>),
+        LowerName => lex::Token::LName(<String>),
+        UpperName => lex::Token::UName(<String>),
+        ContextName => lex::Token::CName(<String>),
+        TypeVarName => lex::Token::TVName(<String>),
 
         IntLit => lex::Token::IntLit(<i64>),
         FloatLit => lex::Token::FloatLit(<String>),

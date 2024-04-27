@@ -14,15 +14,18 @@
 
 use std::fmt::Display;
 
-#[derive(Eq, PartialEq, Clone, Copy, Debug)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub struct Location {
+    pub source: usize,
     pub line: usize,
     pub column: usize,
 }
 
+
 impl Default for Location {
     fn default() -> Self {
         Self {
+            source: usize::MAX,
             line: Default::default(),
             column: Default::default(),
         }
@@ -31,6 +34,10 @@ impl Default for Location {
 
 impl Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "(line {}, col {})", self.line, self.column)
+        write!(
+            f,
+            "({}: line {}, col {})",
+            self.source, self.line, self.column
+        )
     }
 }

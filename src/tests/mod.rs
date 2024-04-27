@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ast::*;
 use crate::twist::{Twist, Twistable};
 use crate::{lex, parser::DefinitionParser, parser::SectParser};
 
@@ -24,30 +23,30 @@ fn assert_token_is(result: Option<lex::ScannerResult>, expected: lex::Token) {
 
 #[test]
 pub fn test_scan_symbols_and_idents() {
-    let mut lex = lex::Scanner::new("foo bar/baz + 23\nbli");
+    let mut lex = lex::Scanner::new(0,"foo bar/baz + 23\nbli");
 
     assert_token_is(
         lex.scan_token(),
-        lex::Token::LName(LowerName("foo".to_string())),
+        lex::Token::LName("foo".to_string()),
     );
     assert_token_is(
         lex.scan_token(),
-        lex::Token::LName(LowerName("bar/baz".to_string())),
+        lex::Token::LName("bar/baz".to_string()),
     );
     assert_token_is(
         lex.scan_token(),
-        lex::Token::LName(LowerName("+".to_string())),
+        lex::Token::LName("+".to_string()),
     );
     assert_token_is(lex.scan_token(), lex::Token::IntLit(23));
     assert_token_is(
         lex.scan_token(),
-        lex::Token::LName(LowerName("bli".to_string())),
+        lex::Token::LName("bli".to_string()),
     )
 }
 
 #[test]
 pub fn test_scan_literals() {
-    let mut lex = lex::Scanner::new("\"this is a string\" 27 13.2 -4.0e5 'a'\"");
+    let mut lex = lex::Scanner::new(1,"\"this is a string\" 27 13.2 -4.0e5 'a'\"");
 
     assert_token_is(
         lex.scan_token(),
@@ -66,7 +65,7 @@ pub fn test_parse_fun() {
         dup * /
     end @fun
     ";
-    let parsed = DefinitionParser::new().parse(lex::Scanner::new(fun_str));
+    let parsed = DefinitionParser::new().parse(lex::Scanner::new(2, fun_str));
 
     let def = parsed.expect("Should have succeeded");
     let t = def.twist();
@@ -93,7 +92,7 @@ pub fn parse_object() {
     end@obj
     ";
     let parsed = SectParser::new()
-        .parse(lex::Scanner::new(obj_str))
+        .parse(lex::Scanner::new(3, obj_str))
         .unwrap()
         .twist();
 
@@ -109,7 +108,7 @@ pub fn parse_complicated_stack_effect_type() {
         twiddle swap apply
     end
     ";
-    let parsed = DefinitionParser::new().parse(lex::Scanner::new(fun_str));
+    let parsed = DefinitionParser::new().parse(lex::Scanner::new(4, fun_str));
     if parsed.is_err() {
         println!("{:?}", parsed);
     }
@@ -152,7 +151,7 @@ pub fn test_parse_lots_of_stuff() {
     end
     ";
 
-    let parsed = SectParser::new().parse(lex::Scanner::new(stuff));
+    let parsed = SectParser::new().parse(lex::Scanner::new(5, stuff));
     let twisted = parsed.unwrap().twist();
     assert_eq!(mk_expected_lots_of_stuff().to_string(), twisted.to_string());
 }

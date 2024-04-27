@@ -14,60 +14,45 @@
 
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct LowerName(pub String); // lowercase identifier - anything starting with a lowercase
+pub type LowerName = String; // lowercase identifier - anything starting with a lowercase
                                   // letter, or a symbol other than ' or _
 
-impl Display for LowerName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct UpperName(pub String); // uppercase identifier - anything starting with
+pub type UpperName = String; // uppercase identifier - anything starting with
                                   // an uppercase letter.
 
-impl Display for UpperName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+pub type TypeVarName = String; // type_var - anything starting with a '.
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub struct TypeVarName(pub String); // type_var - anything starting with a '.
-
-impl Display for TypeVarName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ContextName(pub String); // context var - anything starting with a $.
-
-impl Display for ContextName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+pub type ContextName = String; // context var - anything starting with a $.
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub struct ModulePath {
-    pub segments: Vec<LowerName>
+pub struct ModulePath(pub String);
+
+impl ModulePath {
+    pub fn new(segments: Vec<String>) -> ModulePath {
+        ModulePath(segments.join("."))
+    }
+
+    pub fn to_file_syntax(&self) -> String {
+        self.0.clone().replace('.', "/")
+    }
+
+    pub fn segments(&self) -> Vec<String> {
+        self.0.clone().split(".").map(|s| s.to_string()).collect::<Vec<String>>()
+    }
 }
 
-impl Display for ModulePath {
+impl<'a> Display for ModulePath {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for seg in &self.segments {
-            write!(f, ".{}", seg.to_string())?;
-        }
-        Ok(())
+        write!(f, "{}", self)
     }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Ident<NameKind: Display> {
-    Scoped { path: ModulePath, name: NameKind },
+    Scoped {
+        path: ModulePath,
+        name: NameKind,
+    },
     Local(NameKind),
 }
 
@@ -77,10 +62,7 @@ impl<NameKind: Display> Display for Ident<NameKind> {
             Self::Scoped { path, name } => write!(
                 f,
                 "{}.{}",
-                path.segments.iter()
-                    .map(|it| it.to_string())
-                    .collect::<Vec<String>>()
-                    .join("::"),
+                path.0,
                 name
             ),
             Self::Local(n) => write!(f, "{}", n),

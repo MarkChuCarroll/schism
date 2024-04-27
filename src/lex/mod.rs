@@ -56,7 +56,9 @@ impl CharacterCategories for char {
 
     fn is_syntax_char(&self) -> bool {
         match self {
-            '\'' | ':' |  '.' | ',' | '"' | '$' | '@' | '|' | '(' | ')' | '{' | '}' | '[' | ']' => true,
+            '\'' | ':' | '.' | ',' | '"' | '$' | '@' | '|' | '(' | ')' | '{' | '}' | '[' | ']' => {
+                true
+            }
             _ => false,
         }
     }
@@ -69,19 +71,21 @@ impl CharacterCategories for char {
 pub struct Scanner<'input> {
     index: LineColLookup<'input>,
     chars: std::iter::Peekable<CharIndices<'input>>,
+    path_index: usize,
     input: &'input str,
     current: Option<(usize, char)>,
     next: Option<(usize, char)>,
-    reserved: HashMap<String, Token>,
+    reserved: HashMap<String, Token>
 }
 
 impl<'input> Scanner<'input> {
-    pub fn new(input: &'input str) -> Scanner<'input> {
+    pub fn new(path_index: usize, input: &'input str) -> Scanner<'input> {
         let mut scanner = Scanner {
             index: LineColLookup::new(input),
             chars: input.char_indices().peekable(),
             current: None,
             next: None,
+            path_index,
             input,
             reserved: HashMap::from([
                 ("--".to_string(), Token::DashDash),
@@ -132,7 +136,11 @@ impl<'input> Scanner<'input> {
     /// if you give it an index beyond the end of the input.
     pub fn line_and_col(&self, pos: usize) -> Location {
         let (l, c) = self.index.get(pos);
-        Location { line: l, column: c }
+        Location {
+            source: self.path_index,
+            line: l,
+            column: c,
+        }
     }
 
     fn advance(&mut self) {
@@ -151,7 +159,7 @@ impl<'input> Scanner<'input> {
     ) -> Option<ScannerResult> {
         match self.reserved.get(&token_str) {
             Some(t) => self.good_token(t.clone(), start, end),
-            None => self.good_token(Token::LName(LowerName(token_str)), start, end),
+            None => self.good_token(Token::LName(token_str), start, end),
         }
     }
 
@@ -170,7 +178,12 @@ impl<'input> Scanner<'input> {
         }
     }
 
-    fn validate_type_var(&self, token_str: &str, start: usize, end: usize) -> Option<ScannerResult> {
+    fn validate_type_var(
+        &self,
+        token_str: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<ScannerResult> {
         if token_str.len() < 2 {
             Some(Err(CompilationError::LexicalError(
                 self.line_and_col(start),
@@ -178,7 +191,7 @@ impl<'input> Scanner<'input> {
             )))
         } else {
             self.good_token(
-                Token::TVName(TypeVarName(token_str.to_string())),
+                Token::TVName(token_str.to_string()),
                 start,
                 end,
             )
@@ -197,12 +210,13 @@ impl<'input> Scanner<'input> {
                 "Context var must have at least one letter after its sigill".to_string(),
             )))
         } else {
-            self.good_token(Token::CName(ContextName(token_str.to_string())), start, end)
+            self.good_token(Token::CName(token_str.to_string()), start, end)
         }
     }
 }
 
-pub type ScannerResult<'input> = Result<(Location, Token, Location), CompilationError>;
+pub type ScannerResult<'input> =
+    Result<(Location, Token, Location), CompilationError>;
 
 impl<'input> Iterator for Scanner<'input> {
     type Item = ScannerResult<'input>;
@@ -283,16 +297,18 @@ impl<'input> Scanner<'input> {
                             self.good_token(Token::LBracketBar, pos, pos + 2)
                         }
                         _ => self.good_token(Token::LBracket, pos, pos + 1),
+                    };
+                }
+                Some((pos, '|')) => {
+                    return match self.next {
+                        Some((_, ']')) => {
+                            self.advance();
+                            self.advance();
+                            self.good_token(Token::RBracketBar, pos, pos + 2)
+                        }
+                        _ => self.scan_ident_or_keyword(pos),
                     }
                 }
-                Some((pos, '|')) => return match self.next {
-                    Some((_, ']')) => {
-                        self.advance();
-                        self.advance();
-                        self.good_token(Token::RBracketBar, pos, pos + 2)
-                    }
-                    _ => self.scan_ident_or_keyword(pos),
-                },
                 // Multi-character tokens/elements with a distinguishing leader
                 Some((start, '/')) => match self.next {
                     Some((_, '/')) => {
@@ -312,10 +328,12 @@ impl<'input> Scanner<'input> {
                 Some((p, '$')) => return self.scan_context_var(p),
                 Some((p, '`')) => return self.scan_type_var(p),
                 Some((pos, c)) if c.is_number_decimal_digit() => return self.scan_number(pos),
-                Some((pos, '-')) => return match self.next {
-                    Some((_, c)) if c.is_number_decimal_digit() => self.scan_number(pos),
-                    _ => self.scan_ident_or_keyword(pos),
-                },
+                Some((pos, '-')) => {
+                    return match self.next {
+                        Some((_, c)) if c.is_number_decimal_digit() => self.scan_number(pos),
+                        _ => self.scan_ident_or_keyword(pos),
+                    }
+                }
                 Some((pos, '"')) => return self.scan_string(pos),
                 Some((pos, '\'')) => return self.scan_char_literal(pos),
 
@@ -506,7 +524,10 @@ impl<'input> Scanner<'input> {
                 }
                 c => {
                     let pos = self.line_and_col(pos);
-                    Err(CompilationError::InvalidEscape(pos, c.to_string()))
+                    Err(CompilationError::InvalidEscape(
+                        pos,
+                        c.to_string(),
+                    ))
                 }
             }
         } else {
@@ -515,7 +536,7 @@ impl<'input> Scanner<'input> {
                 pos,
                 "unterminated escape sequence".to_string(),
             ))
-        }
+        };
     }
 
     /// Convenience function for scanning past a group of characters,
@@ -547,7 +568,7 @@ impl<'input> Scanner<'input> {
                             pos,
                             format!("Invalid token: Expected at least {} chars", min).to_string(),
                         ))
-                    }
+                    };
                 }
             } else {
                 return if i >= min {
@@ -558,7 +579,7 @@ impl<'input> Scanner<'input> {
                         pos,
                         format!("Expected at least {} characters", min).to_string(),
                     ))
-                }
+                };
             }
         }
         return Ok(result);
@@ -584,7 +605,7 @@ impl<'input> Scanner<'input> {
                 loc,
                 "Expected character, but saw EOF".to_string(),
             ))
-        }
+        };
     }
 
     fn scan_char_escape(&mut self, start: usize) -> ScannerResult {
@@ -598,7 +619,7 @@ impl<'input> Scanner<'input> {
                     "Unterminated char literal".to_string(),
                 ))
             }
-        }
+        };
     }
 
     fn scan_char_literal(&mut self, start: usize) -> Option<ScannerResult> {
@@ -638,7 +659,7 @@ impl<'input> Scanner<'input> {
                 loc,
                 "Invalid character literal".to_string(),
             )))
-        }
+        };
     }
 
     fn scan_ident_or_keyword(&mut self, start: usize) -> Option<ScannerResult> {
@@ -726,14 +747,14 @@ impl<'input> Scanner<'input> {
                 Some((_, c)) if c.is_id_char() => continue,
                 Some((end, _)) => {
                     return self.good_token(
-                        Token::UName(UpperName(self.input[start..end].to_string())),
+                        Token::UName(self.input[start..end].to_string()),
                         start,
                         end,
                     )
                 }
                 None => {
                     return self.good_token(
-                        Token::UName(UpperName(self.input[start..].to_string())),
+                        Token::UName(self.input[start..].to_string()),
                         start,
                         self.input.len(),
                     )

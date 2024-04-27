@@ -44,7 +44,7 @@ pub fn run_compiler() {
         args.source_path, args.sources
     );
     let mut comp = compiler::Compiler::new(args.source_path);
-    let result = comp.compile(&args.sources);
+    let result = comp.compile(args.sources);
     match result {
         Ok(_) => println!("Compilation was successful"),
         Err(err) => println!("Compilation failed with error: {}", err),

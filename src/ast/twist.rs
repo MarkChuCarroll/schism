@@ -152,7 +152,7 @@ impl Twistable for TypeParam {
     }
 }
 
-impl Twistable for OperationSig {
+impl  Twistable for OperationSig {
     fn twist(&self) -> Twist {
         match self {
             Self::MethodSig { name, effect } => Twist::obj(
@@ -173,7 +173,7 @@ impl Twistable for OperationSig {
     }
 }
 
-impl Twistable for ObjectDef {
+impl  Twistable for ObjectDef {
     fn twist(&self) -> Twist {
         Twist::obj(
             "ObjectDef",
@@ -189,7 +189,7 @@ impl Twistable for ObjectDef {
     }
 }
 
-impl Twistable for ObjectMemberDecl {
+impl  Twistable for ObjectMemberDecl {
     fn twist(&self) -> Twist {
         match self {
             ObjectMemberDecl::ObjectSlot {
@@ -226,7 +226,7 @@ impl Twistable for ObjectMemberDecl {
     }
 }
 
-impl Twistable for FunctionDef {
+impl  Twistable for FunctionDef {
     fn twist(&self) -> Twist {
         Twist::obj(
             "Function",
@@ -240,7 +240,7 @@ impl Twistable for FunctionDef {
     }
 }
 
-impl Twistable for VarDef {
+impl  Twistable for VarDef {
     fn twist(&self) -> Twist {
         Twist::obj(
             "Variable",
@@ -254,7 +254,7 @@ impl Twistable for VarDef {
     }
 }
 
-impl Twistable for Statement {
+impl  Twistable for Statement {
     fn twist(&self) -> Twist {
         match self {
             Statement::StringLit(s) => Twist::attr("StringLit", s.to_string()),
@@ -319,7 +319,7 @@ impl Twistable for Statement {
     }
 }
 
-impl Twistable for CondClause {
+impl  Twistable for CondClause {
     fn twist(&self) -> Twist {
         Twist::obj(
             "CondClause",

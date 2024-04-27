@@ -15,6 +15,7 @@
 #[macro_use]
 extern crate lalrpop_util;
 
+
 lalrpop_mod!(parser, "/parser/schism.rs");
 
 mod ast;
